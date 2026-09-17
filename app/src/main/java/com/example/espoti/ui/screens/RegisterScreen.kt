@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Image
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,12 +29,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import com.example.espoti.ui.components.EspotiField
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiLogoStyle
 import com.example.espoti.ui.theme.EspotiTheme
+import com.example.espoti.R
 
 // ============================================================================
 // REGISTRO (Register) SCREEN
@@ -47,10 +50,6 @@ import com.example.espoti.ui.theme.EspotiTheme
 //   6. "Register" button (brown pill, ~55% width, centered)
 //   7. Google/Facebook icon row
 //   8. "Already have an account? Login" -> goes back to Login
-//
-// WHERE TO CHANGE THINGS: same rules as LoginScreen.kt - text is inline
-// below, colors/fonts come from ui/theme/, spacing is controlled by the
-// Spacer heights and the Column's padding.
 //
 // NOTE: like LoginScreen, this is prototype-only. `onRegisterSuccess` fires
 // immediately on button click with no validation or backend call. Add
@@ -76,12 +75,10 @@ fun RegisterScreen(
     ) {
         Spacer(modifier = Modifier.height(32.dp))
 
-        // ICON SPOT: same logo mark as Login/Bienvenida.
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(BrandBrown)
+        Image(
+            painter = painterResource(R.drawable.logoicon),
+            contentDescription = "Espoti logo",
+            modifier = Modifier.size(110.dp)
         )
 
         Spacer(modifier = Modifier.height(12.dp))

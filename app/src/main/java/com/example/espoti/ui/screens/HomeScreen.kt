@@ -16,9 +16,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,10 +29,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.espoti.R
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
@@ -47,18 +52,6 @@ import com.example.espoti.ui.theme.SurfacePeach
 //   4. "Invite us a coffee" donation card
 //   5. "Meeting History" / "Previous Events" -> row of image placeholders
 //   6. Bottom nav bar with a floating "+" button (EspotiBottomNav, below)
-//
-// WHERE TO CHANGE THINGS:
-//   - TEXT: greeting, section titles and the sample meeting data (the
-//     `sampleMeetings` list below) are all plain values - edit directly.
-//   - COLORS / FONT: from ui/theme/, as with every other screen.
-//   - REAL DATA: `sampleMeetings` is hardcoded prototype data so the screen
-//     has something to show. Replace it with data from a ViewModel/API once
-//     you have one - the `MeetingCard` composable itself doesn't need to change.
-//   - MAIN CONTENT: everything below the header is one scrollable Column;
-//     reorder sections or add new ones there.
-//   - ICON SPOT: see comments at the logo, hamburger, avatars, coffee cup
-//     and history placeholders.
 // ============================================================================
 
 private data class Meeting(
@@ -154,12 +147,11 @@ private fun HomeHeader() {
         verticalAlignment = Alignment.Top
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            // ICON SPOT: small logo mark, same as the other screens.
-            Box(
+            Image(
+                painter = painterResource(R.drawable.logoicon),
+                contentDescription = "Espoti logo",
                 modifier = Modifier
                     .size(40.dp)
-                    .clip(CircleShape)
-                    .background(BrandBrown)
             )
             Spacer(modifier = Modifier.width(12.dp))
             Column {
@@ -312,16 +304,14 @@ private fun EspotiBottomNav(onProfileClick: () -> Unit) {
                 .padding(vertical = 12.dp, horizontal = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            NavItem(label = "Home", symbol = "⌂", active = true)
-            NavItem(label = "Meetings", symbol = "⊙")
+            NavItem(label = "Home", iconRes = R.drawable.homeicon, active = true)
+            NavItem(label = "Meetings", iconRes = R.drawable.meetingicon)
             Spacer(modifier = Modifier.width(56.dp)) // room for the floating "+" button
-            NavItem(label = "Friends", symbol = "☷")
-            NavItem(label = "Profile", symbol = "☺", onClick = onProfileClick)
+            NavItem(label = "Friends", iconRes = R.drawable.frinendsicon)
+            NavItem(label = "Profile", iconRes = R.drawable.profileicon, onClick = onProfileClick)
         }
 
         // ICON SPOT: floating "+" action button, e.g. "create new meeting".
-        // Replace the "+" Text with an Icon(Icons.Default.Add, ...) if you
-        // add the material-icons-extended dependency.
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -339,7 +329,7 @@ private fun EspotiBottomNav(onProfileClick: () -> Unit) {
 @Composable
 private fun NavItem(
     label: String,
-    symbol: String,
+    @DrawableRes iconRes: Int,
     active: Boolean = false,
     onClick: () -> Unit = {}
 ) {
@@ -351,7 +341,14 @@ private fun NavItem(
             .clickable(onClick = onClick)
             .padding(horizontal = 4.dp, vertical = 2.dp)
     ) {
-        Text(text = symbol, color = tint, fontSize = 18.sp, modifier = Modifier.padding(bottom = 2.dp))
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = label,
+            tint = tint,
+            modifier = Modifier
+                .size(22.dp)
+                .padding(bottom = 2.dp)
+        )
         Text(text = label, color = tint, style = MaterialTheme.typography.labelSmall)
     }
 }

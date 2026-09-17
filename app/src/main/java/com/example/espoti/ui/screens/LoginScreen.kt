@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.Image
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,12 +29,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
 import com.example.espoti.ui.components.EspotiField
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiLogoStyle
 import com.example.espoti.ui.theme.EspotiTheme
+import com.example.espoti.R
 
 // ============================================================================
 // LOGIN SCREEN
@@ -46,19 +49,6 @@ import com.example.espoti.ui.theme.EspotiTheme
 //   5. Google/Facebook icon row
 //   6. "Don't have an account? Sign Up" -> goes to Registro
 //   7. "Forgot Password?" link (not wired to anything in this prototype)
-//
-// WHERE TO CHANGE THINGS:
-//   - TEXT: edit the strings directly below.
-//   - COLORS / FONT: come from ui/theme/ - nothing is hardcoded here except
-//     the one-off BrandOrange used for the links, matching Figma.
-//   - FIELDS: `email`/`password` are prototype-only state (no real
-//     authentication). `onLoginSuccess` fires directly on button press -
-//     wire it to a real login call once you have a backend, e.g.
-//     `onClick = { if (isValid) onLoginSuccess() else showError = true }`.
-//   - POSITION/SPACING: change `padding`, `Spacer(height = ...)` and the
-//     button's `modifier` width fraction below.
-//   - ICON SPOT: logo circle below, and the Google "G" / Facebook "f"
-//     row further down.
 // ============================================================================
 @Composable
 fun LoginScreen(
@@ -77,13 +67,10 @@ fun LoginScreen(
     ) {
         Spacer(modifier = Modifier.height(40.dp))
 
-        // ICON SPOT: same small logo mark as Bienvenida, brown instead of cream.
-        // Replace with Image(painterResource(R.drawable.logo), ...) for the real asset.
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(BrandBrown)
+        Image(
+            painter = painterResource(R.drawable.logoicon),
+            contentDescription = "Espoti logo",
+            modifier = Modifier.size(110.dp)
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -123,8 +110,7 @@ fun LoginScreen(
 
         // ICON SPOT: social login row (Google "G" / Facebook "f").
         // These are plain styled letters as placeholders - swap for the
-        // official Google/Facebook logo assets before shipping (each has
-        // brand guidelines for their sign-in button).
+        // official Google/Facebook logo assets
         Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
             Text("G", color = BrandOrange, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text("f", color = BrandOrange, fontSize = 22.sp, fontWeight = FontWeight.Bold)
