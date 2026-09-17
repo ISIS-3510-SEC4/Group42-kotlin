@@ -38,8 +38,12 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     ) {
         composable(Screen.Welcome.route) {
             WelcomeScreen(
-                onLoginClick = { navController.navigate(Screen.Login.route) },
-                onRegisterClick = { navController.navigate(Screen.Register.route) }
+                onLoginClick = {
+                    navController.navigate(Screen.Login.route) { launchSingleTop = true }
+                },
+                onRegisterClick = {
+                    navController.navigate(Screen.Register.route) { launchSingleTop = true }
+                }
             )
         }
         composable(Screen.Login.route) {
@@ -51,7 +55,15 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                         popUpTo(Screen.Welcome.route) { inclusive = true }
                     }
                 },
-                onNavigateToRegister = { navController.navigate(Screen.Register.route) }
+                onNavigateToRegister = {
+                    // Replace Login with Register instead of stacking on top
+                    // of it, so bouncing between the two auth screens doesn't
+                    // grow the back stack or the RAM ._.
+                    navController.navigate(Screen.Register.route) {
+                        popUpTo(Screen.Welcome.route)
+                        launchSingleTop = true
+                    }
+                }
             )
         }
         composable(Screen.Register.route) {
@@ -61,7 +73,12 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                         popUpTo(Screen.Welcome.route) { inclusive = true }
                     }
                 },
-                onNavigateToLogin = { navController.navigate(Screen.Login.route) }
+                onNavigateToLogin = {
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(Screen.Welcome.route)
+                        launchSingleTop = true
+                    }
+                }
             )
         }
         composable(Screen.Home.route) {
