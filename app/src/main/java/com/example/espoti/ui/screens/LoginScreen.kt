@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -68,6 +69,9 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
 
+    var isDarkTheme = isSystemInDarkTheme()
+    var iconResource = if (isDarkTheme) R.drawable.logoicon else R.drawable.logoicondark
+
     var emailError by remember { mutableStateOf(false) }
     var passwordError by remember { mutableStateOf(false) }
 
@@ -116,7 +120,7 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(40.dp))
 
         Image(
-            painter = painterResource(R.drawable.logoicon),
+            painter = painterResource(id=iconResource),
             contentDescription = "Espoti logo",
             modifier = Modifier.size(110.dp)
         )
