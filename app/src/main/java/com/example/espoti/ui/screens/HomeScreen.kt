@@ -66,7 +66,7 @@ private val sampleMeetings = listOf(
 )
 
 @Composable
-fun HomeScreen(onLogoutClick: () -> Unit, onMeetingsClick: () -> Unit) {
+fun HomeScreen(onLogoutClick: () -> Unit, onMeetingsClick: () -> Unit, onCreateMeetingClick: () -> Unit) {
     Scaffold(
         bottomBar = {
             // "Logout" isn't a button in the Figma file - in a real app it
@@ -90,7 +90,7 @@ fun HomeScreen(onLogoutClick: () -> Unit, onMeetingsClick: () -> Unit) {
 
             EspotiPrimaryButton(
                 text = "Create new meeting",
-                onClick = { /* not wired up in this prototype */ }
+                onClick = onCreateMeetingClick
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -292,6 +292,6 @@ private fun HistoryPlaceholder() {
 private fun HomeScreenPreview() {
     EspotiTheme {
         HomeScreen(onLogoutClick = {},
-            onMeetingsClick = {})
+            onMeetingsClick = {}, onCreateMeetingClick = {})
     }
 }

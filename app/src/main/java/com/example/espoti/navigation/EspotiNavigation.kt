@@ -5,7 +5,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.espoti.ui.model.Meeting
 import com.example.espoti.ui.screens.HomeScreen
 import com.example.espoti.ui.screens.LoginScreen
 import com.example.espoti.ui.screens.MeetingDetailScreen
@@ -13,6 +12,8 @@ import com.example.espoti.ui.screens.MeetingsScreen
 import com.example.espoti.ui.screens.RegisterScreen
 import com.example.espoti.ui.screens.WelcomeScreen
 import com.example.espoti.ui.model.sampleMeetings
+import com.example.espoti.ui.screens.CreateMeetingScreen1
+import com.example.espoti.ui.screens.CreateMeetingScreen2
 
 // ============================================================================
 // SCREEN ROUTES
@@ -28,10 +29,13 @@ sealed class Screen(val route: String) {
     object Register : Screen("register") // Registro
     object Home : Screen("home")         // Inicio
     object Meetings : Screen("meetings")
+    object CreateMeeting1 : Screen("create_meeting1")
+    object CreateMeeting2 : Screen("create_meeting2")
     object MeetingDetail : Screen("meeting_detail/{meetingId}") {
         fun createRoute(meetingId: Int): String {
             return "meeting_detail/$meetingId"
         }
+
     }
 }
 
@@ -103,6 +107,34 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     navController.navigate(Screen.Meetings.route){
                         launchSingleTop = true
                     }
+                },
+                onCreateMeetingClick = {
+                    navController.navigate(Screen.CreateMeeting1.route){
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+        composable(Screen.CreateMeeting1.route) {
+            CreateMeetingScreen1(
+                onScheduleClick = {
+                    navController.navigate(Screen.CreateMeeting2.route){
+                        launchSingleTop = true
+                    }
+                }, onHomeClick = {
+                    navController.popBackStack(Screen.Home.route, inclusive = false)
+                }
+            )
+        }
+        composable(Screen.CreateMeeting2.route) {
+            CreateMeetingScreen2(
+                onVoteClick = {
+                    navController.navigate(Screen.Home.route){
+                        launchSingleTop = true
+                    }
+                },
+                onHomeClick = {
+                    navController.popBackStack(Screen.Home.route, inclusive = false)
                 }
             )
         }
