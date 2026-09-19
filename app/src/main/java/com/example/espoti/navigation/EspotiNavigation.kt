@@ -5,10 +5,14 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.espoti.ui.model.Meeting
 import com.example.espoti.ui.screens.HomeScreen
 import com.example.espoti.ui.screens.LoginScreen
+import com.example.espoti.ui.screens.MeetingDetailScreen
+import com.example.espoti.ui.screens.MeetingsScreen
 import com.example.espoti.ui.screens.RegisterScreen
 import com.example.espoti.ui.screens.WelcomeScreen
+import com.example.espoti.ui.model.sampleMeetings
 
 // ============================================================================
 // SCREEN ROUTES
@@ -23,6 +27,12 @@ sealed class Screen(val route: String) {
     object Login : Screen("login")       // Login
     object Register : Screen("register") // Registro
     object Home : Screen("home")         // Inicio
+    object Meetings : Screen("meetings")
+    object MeetingDetail : Screen("meeting_detail/{meetingId}") {
+        fun createRoute(meetingId: Int): String {
+            return "meeting_detail/$meetingId"
+        }
+    }
 }
 
 /**
@@ -32,6 +42,7 @@ sealed class Screen(val route: String) {
  */
 @Composable
 fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
+
     NavHost(
         navController = navController,
         startDestination = Screen.Welcome.route
@@ -87,8 +98,48 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     navController.navigate(Screen.Welcome.route) {
                         popUpTo(0) // clear the entire back stack
                     }
+                },
+                onMeetingsClick = {
+                    navController.navigate(Screen.Meetings.route){
+                        launchSingleTop = true
+                    }
                 }
             )
+        }
+        composable(Screen.Meetings.route) {
+            MeetingsScreen(
+                onHomeClick = {
+                    navController.popBackStack(Screen.Home.route, inclusive = false)
+                },
+            onDetailClick = {meeting ->
+                navController.navigate(Screen.MeetingDetail.createRoute(meeting.id))
+
+                }
+            )
+        }
+        composable(Screen.MeetingDetail.route) { backStackEntry ->
+            val meetingId =
+                backStackEntry.arguments?.getString("meetingId")?.toIntOrNull()
+            val meeting = sampleMeetings.find {
+                it.id==meetingId
+            }
+
+            if (meeting != null) {
+                MeetingDetailScreen(
+                    meeting = meeting,
+                    onHomeClick = {
+                        navController.popBackStack(
+                            Screen.Home.route,
+                            inclusive = false
+                        )
+                    },
+                    onBackClick = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+
         }
     }
 }
