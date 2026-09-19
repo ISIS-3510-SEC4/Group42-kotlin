@@ -38,6 +38,7 @@ import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
 import com.example.espoti.ui.components.EspotiBottomNav
+import com.example.espoti.ui.components.BottomNavItem
 
 // ============================================================================
 // INICIO (Home) SCREEN
@@ -72,7 +73,7 @@ fun HomeScreen(onLogoutClick: () -> Unit) {
             // would live behind the hamburger menu or the Profile tab.
             // Wired here to the Profile tab for now so the prototype flow
             // (Login/Registro -> Inicio -> back to Bienvenida) still works.
-            EspotiBottomNav(onProfileClick = onLogoutClick)
+            EspotiBottomNav(selectedItem = BottomNavItem.HOME, onProfileClick = onLogoutClick )
         }
     ) { innerPadding ->
         Column(

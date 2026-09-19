@@ -31,7 +31,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.example.espoti.ui.theme.BrandBrown
 
-
+enum class BottomNavItem {
+    HOME,
+    MEETINGS,
+    FRIENDS,
+    PROFILE
+}
 @Composable
 private fun NavItem(
     label: String,
@@ -66,7 +71,8 @@ private fun NavItem(
  * tab is colored orange, inactive tabs cream/tan on the brown bar.
  */
 @Composable
-fun EspotiBottomNav(onProfileClick: () -> Unit) {
+fun EspotiBottomNav(selectedItem: BottomNavItem, onHomeClick: () -> Unit = {}, onMeetingsClick: () -> Unit = {}, onFriendsClick: () -> Unit = {}, onProfileClick: () -> Unit = {}, onAddClick: () -> Unit = {})
+    {
     Box(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -75,11 +81,11 @@ fun EspotiBottomNav(onProfileClick: () -> Unit) {
                 .padding(vertical = 12.dp, horizontal = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            NavItem(label = "Home", iconRes = R.drawable.homeicon, active = true)
-            NavItem(label = "Meetings", iconRes = R.drawable.meetingicon)
+            NavItem(label = "Home", iconRes = R.drawable.homeicon, active = selectedItem == BottomNavItem.HOME, onClick=onHomeClick)
+            NavItem(label = "Meetings", iconRes = R.drawable.meetingicon, active=selectedItem == BottomNavItem.MEETINGS, onClick = onMeetingsClick)
             Spacer(modifier = Modifier.width(56.dp)) // room for the floating "+" button
-            NavItem(label = "Friends", iconRes = R.drawable.frinendsicon)
-            NavItem(label = "Profile", iconRes = R.drawable.profileicon, onClick = onProfileClick)
+            NavItem(label = "Friends", iconRes = R.drawable.frinendsicon, active = selectedItem== BottomNavItem.FRIENDS, onClick = onFriendsClick)
+            NavItem(label = "Profile", iconRes = R.drawable.profileicon, active = selectedItem== BottomNavItem.PROFILE ,onClick = onProfileClick)
         }
 
         // ICON SPOT: floating "+" action button, e.g. "create new meeting".
