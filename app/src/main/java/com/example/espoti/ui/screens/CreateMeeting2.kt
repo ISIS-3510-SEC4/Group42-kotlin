@@ -27,13 +27,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.espoti.R
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
-import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.SurfacePeach
-import androidx.compose.material.icons.Icons
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -158,26 +155,7 @@ fun CreateMeetingScreen2(
     }
 }
 
-@Composable
-private fun StaticField(
-    value: String
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(28.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color.LightGray)
-            .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = BrandBrown
-        )
-    }
-}
+
 
 @Composable
 private fun Avatar() {

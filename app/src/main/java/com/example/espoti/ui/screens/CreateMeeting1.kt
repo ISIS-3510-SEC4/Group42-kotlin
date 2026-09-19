@@ -34,7 +34,6 @@ import com.example.espoti.ui.components.EspotiField
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
-import com.example.espoti.ui.theme.PurpleGrey40
 import com.example.espoti.ui.theme.SurfacePeach
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -200,26 +199,6 @@ fun CreateMeetingScreen1(
 }
 
 
-@Composable
-private fun StaticField(
-    value: String
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(28.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color.LightGray)
-            .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodySmall,
-            color = BrandBrown
-        )
-    }
-}
 
 
 @Composable

@@ -5,7 +5,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.espoti.ui.model.Meeting
 import com.example.espoti.ui.screens.HomeScreen
 import com.example.espoti.ui.screens.LoginScreen
 import com.example.espoti.ui.screens.MeetingDetailScreen
