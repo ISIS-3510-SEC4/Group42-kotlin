@@ -133,8 +133,9 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                             inclusive = false
                         )
                     },
-                    onBackClick = {
+                    onBackClick = {if (navController.currentDestination?.route == Screen.MeetingDetail.route){
                         navController.popBackStack()
+                    }
                     }
                 )
             }
