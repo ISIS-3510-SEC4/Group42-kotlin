@@ -38,26 +38,16 @@ import com.example.espoti.ui.theme.SurfacePeach
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
-import com.example.espoti.ui.components.BottomNavItem
-import com.example.espoti.ui.components.EspotiBottomNav
 
 @Composable
 fun CreateMeetingScreen1(
-    onScheduleClick: () -> Unit,
-    onHomeClick: () -> Unit
+    onScheduleClick: () -> Unit
 ) {
     var whatToDo by remember { mutableStateOf("") }
     var whatDay by remember { mutableStateOf("") }
     var whatTime by remember { mutableStateOf("") }
 
-    Scaffold(
-        bottomBar = {
-            EspotiBottomNav(
-                selectedItem = BottomNavItem.HOME,
-                onHomeClick = onHomeClick
-            )
-        }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
 
         Column(
             modifier = Modifier

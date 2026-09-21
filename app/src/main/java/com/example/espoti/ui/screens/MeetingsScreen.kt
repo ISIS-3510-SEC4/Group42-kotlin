@@ -31,8 +31,6 @@ import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.example.espoti.R
-import com.example.espoti.ui.components.BottomNavItem
-import com.example.espoti.ui.components.EspotiBottomNav
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.TextCream
 import com.example.espoti.ui.components.UpcomingMeetingCard
@@ -45,16 +43,9 @@ enum class MeetingTab {
     UPCOMING, PREVIOUS, CANCELED
 }
 @Composable
-fun MeetingsScreen(onHomeClick: () -> Unit, onDetailClick: (Meeting) -> Unit) {
+fun MeetingsScreen(onDetailClick: (Meeting) -> Unit) {
     var selectedTab by remember { mutableStateOf((MeetingTab.UPCOMING)) }
-    Scaffold(
-        bottomBar = {
-            EspotiBottomNav(
-                selectedItem = BottomNavItem.MEETINGS,
-                onHomeClick = onHomeClick
-            )
-        }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
 
         Column(
             modifier = Modifier

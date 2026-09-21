@@ -38,24 +38,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
-import com.example.espoti.ui.components.BottomNavItem
-import com.example.espoti.ui.components.EspotiBottomNav
 
 @Composable
 fun CreateMeetingScreen2(
-    onVoteClick: () -> Unit,
-    onHomeClick: () -> Unit
+    onVoteClick: () -> Unit
 ) {
     var selectedRestaurant by remember { mutableStateOf<String?>(null) }
 
-    Scaffold(
-        bottomBar = {
-            EspotiBottomNav(
-                selectedItem = BottomNavItem.HOME,
-                onHomeClick = onHomeClick
-            )
-        }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
 
         Column(
             modifier = Modifier

@@ -37,8 +37,6 @@ import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
-import com.example.espoti.ui.components.EspotiBottomNav
-import com.example.espoti.ui.components.BottomNavItem
 
 // ============================================================================
 // INICIO (Home) SCREEN
@@ -66,16 +64,8 @@ private val sampleMeetings = listOf(
 )
 
 @Composable
-fun HomeScreen(onLogoutClick: () -> Unit, onMeetingsClick: () -> Unit, onCreateMeetingClick: () -> Unit) {
-    Scaffold(
-        bottomBar = {
-            // "Logout" isn't a button in the Figma file - in a real app it
-            // would live behind the hamburger menu or the Profile tab.
-            // Wired here to the Profile tab for now so the prototype flow
-            // (Login/Registro -> Inicio -> back to Bienvenida) still works.
-            EspotiBottomNav(selectedItem = BottomNavItem.HOME, onMeetingsClick = onMeetingsClick, onProfileClick = onLogoutClick )
-        }
-    ) { innerPadding ->
+fun HomeScreen(onCreateMeetingClick: () -> Unit) {
+    Scaffold { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -291,7 +281,6 @@ private fun HistoryPlaceholder() {
 @Composable
 private fun HomeScreenPreview() {
     EspotiTheme {
-        HomeScreen(onLogoutClick = {},
-            onMeetingsClick = {}, onCreateMeetingClick = {})
+        HomeScreen(onCreateMeetingClick = {})
     }
 }
