@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,6 +76,9 @@ fun RegisterScreen(
 
     var noticeMessage by remember { mutableStateOf<String?>(null) }
     var noticeType by remember { mutableStateOf(NoticeType.ERROR) }
+
+    var isDarkTheme = isSystemInDarkTheme()
+    var iconResource = if (isDarkTheme) R.drawable.logoicon else R.drawable.logoicondark
 
     fun showNotice(message: String, type: NoticeType) {
         noticeMessage = message
@@ -140,7 +144,7 @@ fun RegisterScreen(
         Spacer(modifier = Modifier.height(40.dp))
 
         Image(
-            painter = painterResource(R.drawable.logoicon),
+            painter = painterResource(id = iconResource),
             contentDescription = "Espoti logo",
             modifier = Modifier.size(110.dp)
         )

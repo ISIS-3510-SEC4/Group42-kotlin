@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -135,9 +136,11 @@ private fun HomeHeader() {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top
     ) {
+        var isDarkTheme = isSystemInDarkTheme()
+        var iconResource = if (isDarkTheme) R.drawable.logoicon else R.drawable.logoicondark
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(
-                painter = painterResource(R.drawable.logoicon),
+                painter = painterResource(id = iconResource),
                 contentDescription = "Espoti logo",
                 modifier = Modifier
                     .size(40.dp)
