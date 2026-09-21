@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.espoti.R
 import com.example.espoti.ui.components.EspotiField
+import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
@@ -233,11 +234,7 @@ private fun CreateMeetin1Header() {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            painter = painterResource(R.drawable.logoicon),
-            contentDescription = "Espoti logo",
-            modifier = Modifier.size(55.dp)
-        )
+        EspotiLogo(size = 55.dp)
         Text(
             text = "☰",
             style = MaterialTheme.typography.headlineMedium,

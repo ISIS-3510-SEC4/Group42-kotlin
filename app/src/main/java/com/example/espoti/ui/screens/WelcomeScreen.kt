@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.Image
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,14 +19,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.res.painterResource
+import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.EspotiLogoStyle
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.TextCream
-import com.example.espoti.R
 
 // ============================================================================
 // BIENVENIDA (Welcome) SCREEN
@@ -53,11 +51,8 @@ fun WelcomeScreen(
     ) {
         Spacer(modifier = Modifier.weight(0.9f))
 
-        Image(
-            painter = painterResource(R.drawable.logoicon),
-            contentDescription = "Espoti Logo",
-            modifier = Modifier.size(100.dp)
-        )
+        // Background is always brown, so always use the light logo.
+        EspotiLogo(size = 100.dp, lightVariant = true)
 
         Spacer(modifier = Modifier.height(20.dp))
 

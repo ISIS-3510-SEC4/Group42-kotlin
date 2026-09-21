@@ -1,6 +1,5 @@
 package com.example.espoti.ui.screens
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,9 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.ClipEntry
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import com.example.espoti.R
+import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.TextCream
 import com.example.espoti.ui.components.UpcomingMeetingCard
@@ -107,11 +105,7 @@ private fun MeetingsHeader() {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            painter = painterResource(R.drawable.logoicon),
-            contentDescription = "Espoti logo",
-            modifier = Modifier.size(55.dp)
-        )
+        EspotiLogo(size = 55.dp)
         Text(
             text = "☰",
             style = MaterialTheme.typography.headlineMedium,
