@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.espoti.R
 import com.example.espoti.ui.components.EspotiField
+import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
@@ -38,26 +39,16 @@ import com.example.espoti.ui.theme.SurfacePeach
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
-import com.example.espoti.ui.components.BottomNavItem
-import com.example.espoti.ui.components.EspotiBottomNav
 
 @Composable
 fun CreateMeetingScreen1(
-    onScheduleClick: () -> Unit,
-    onHomeClick: () -> Unit
+    onScheduleClick: () -> Unit
 ) {
     var whatToDo by remember { mutableStateOf("") }
     var whatDay by remember { mutableStateOf("") }
     var whatTime by remember { mutableStateOf("") }
 
-    Scaffold(
-        bottomBar = {
-            EspotiBottomNav(
-                selectedItem = BottomNavItem.HOME,
-                onHomeClick = onHomeClick
-            )
-        }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
 
         Column(
             modifier = Modifier
@@ -243,11 +234,7 @@ private fun CreateMeetin1Header() {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            painter = painterResource(R.drawable.logoicon),
-            contentDescription = "Espoti logo",
-            modifier = Modifier.size(55.dp)
-        )
+        EspotiLogo(size = 55.dp)
         Text(
             text = "☰",
             style = MaterialTheme.typography.headlineMedium,

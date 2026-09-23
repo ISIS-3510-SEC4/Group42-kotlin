@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.espoti.R
+import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.SurfacePeach
@@ -38,24 +39,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
-import com.example.espoti.ui.components.BottomNavItem
-import com.example.espoti.ui.components.EspotiBottomNav
 
 @Composable
 fun CreateMeetingScreen2(
-    onVoteClick: () -> Unit,
-    onHomeClick: () -> Unit
+    onVoteClick: () -> Unit
 ) {
     var selectedRestaurant by remember { mutableStateOf<String?>(null) }
 
-    Scaffold(
-        bottomBar = {
-            EspotiBottomNav(
-                selectedItem = BottomNavItem.HOME,
-                onHomeClick = onHomeClick
-            )
-        }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
 
         Column(
             modifier = Modifier
@@ -181,11 +172,7 @@ private fun CreateMeeting2Header() {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            painter = painterResource(R.drawable.logoicon),
-            contentDescription = "Espoti logo",
-            modifier = Modifier.size(55.dp)
-        )
+        EspotiLogo(size = 55.dp)
         Text(
             text = "☰",
             style = MaterialTheme.typography.headlineMedium,

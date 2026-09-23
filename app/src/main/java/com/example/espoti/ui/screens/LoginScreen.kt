@@ -13,7 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -29,8 +30,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.painterResource
 import com.example.espoti.ui.components.EspotiField
+import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiNoticeCard
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.components.NoticeType
@@ -38,7 +39,6 @@ import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiLogoStyle
 import com.example.espoti.ui.theme.EspotiTheme
-import com.example.espoti.R
 import com.example.espoti.util.EMAIL_EXTENSIONS_HINT
 import com.example.espoti.util.isValidEmail
 
@@ -110,16 +110,13 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 28.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(modifier = Modifier.height(40.dp))
 
-        Image(
-            painter = painterResource(R.drawable.logoicon),
-            contentDescription = "Espoti logo",
-            modifier = Modifier.size(110.dp)
-        )
+        EspotiLogo(size = 110.dp)
 
         Spacer(modifier = Modifier.height(12.dp))
 

@@ -22,8 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.espoti.ui.components.BottomNavItem
-import com.example.espoti.ui.components.EspotiBottomNav
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.model.Meeting
 import com.example.espoti.ui.theme.BrandBrown
@@ -33,17 +31,9 @@ import com.example.espoti.ui.theme.SurfacePeach
 @Composable
 fun MeetingDetailScreen(
     meeting: Meeting,
-    onHomeClick: () -> Unit,
     onBackClick: () -> Unit
 ) {
-    Scaffold(
-        bottomBar = {
-            EspotiBottomNav(
-                selectedItem = BottomNavItem.MEETINGS,
-                onHomeClick = onHomeClick
-            )
-        }
-    ) { innerPadding ->
+    Scaffold { innerPadding ->
 
         Column(
             modifier = Modifier

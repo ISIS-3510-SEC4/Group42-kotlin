@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -26,19 +25,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.espoti.R
+import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
-import com.example.espoti.ui.components.EspotiBottomNav
-import com.example.espoti.ui.components.BottomNavItem
 
 // ============================================================================
 // INICIO (Home) SCREEN
@@ -66,16 +62,8 @@ private val sampleMeetings = listOf(
 )
 
 @Composable
-fun HomeScreen(onLogoutClick: () -> Unit, onMeetingsClick: () -> Unit, onCreateMeetingClick: () -> Unit) {
-    Scaffold(
-        bottomBar = {
-            // "Logout" isn't a button in the Figma file - in a real app it
-            // would live behind the hamburger menu or the Profile tab.
-            // Wired here to the Profile tab for now so the prototype flow
-            // (Login/Registro -> Inicio -> back to Bienvenida) still works.
-            EspotiBottomNav(selectedItem = BottomNavItem.HOME, onMeetingsClick = onMeetingsClick, onProfileClick = onLogoutClick )
-        }
-    ) { innerPadding ->
+fun HomeScreen(onCreateMeetingClick: () -> Unit) {
+    Scaffold { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -146,12 +134,7 @@ private fun HomeHeader() {
         verticalAlignment = Alignment.Top
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Image(
-                painter = painterResource(R.drawable.logoicon),
-                contentDescription = "Espoti logo",
-                modifier = Modifier
-                    .size(40.dp)
-            )
+            EspotiLogo(size = 40.dp)
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(
@@ -291,7 +274,6 @@ private fun HistoryPlaceholder() {
 @Composable
 private fun HomeScreenPreview() {
     EspotiTheme {
-        HomeScreen(onLogoutClick = {},
-            onMeetingsClick = {}, onCreateMeetingClick = {})
+        HomeScreen(onCreateMeetingClick = {})
     }
 }

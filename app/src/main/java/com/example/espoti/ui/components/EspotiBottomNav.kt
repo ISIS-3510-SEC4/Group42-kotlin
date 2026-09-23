@@ -95,7 +95,8 @@ fun EspotiBottomNav(selectedItem: BottomNavItem, onHomeClick: () -> Unit = {}, o
                 .offset(y = (-18).dp)
                 .size(56.dp)
                 .clip(CircleShape)
-                .background(BrandOrange),
+                .background(BrandOrange)
+                .clickable(onClick = onAddClick),
             contentAlignment = Alignment.Center
         ) {
             Text("+", color = androidx.compose.ui.graphics.Color.White, fontSize = 28.sp, fontWeight = FontWeight.Bold)
