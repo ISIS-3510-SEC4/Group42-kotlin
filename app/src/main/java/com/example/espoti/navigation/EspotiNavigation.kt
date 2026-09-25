@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -25,7 +26,9 @@ import com.example.espoti.ui.screens.MeetingDetailScreen
 import com.example.espoti.ui.screens.MeetingsScreen
 import com.example.espoti.ui.screens.RegisterScreen
 import com.example.espoti.ui.screens.WelcomeScreen
-import com.example.espoti.ui.model.sampleMeetings
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.espoti.viewmodel.CreateMeetingViewModel
+import com.example.espoti.viewmodel.MeetingDetailViewModel
 import com.example.espoti.ui.screens.CreateMeetingScreen1
 import com.example.espoti.ui.screens.CreateMeetingScreen2
 
@@ -194,8 +197,12 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     onCreateMeetingClick = { navController.navigateToCreateMeeting() }
                 )
             }
-            composable(Screen.CreateMeeting1.route) {
+            composable(Screen.CreateMeeting1.route) { backStackEntry ->
+                // Scoped to this entry so CreateMeeting2 reuses the same state
+                // (see CreateMeeting2's composable below).
+                val createMeetingViewModel: CreateMeetingViewModel = viewModel(backStackEntry)
                 CreateMeetingScreen1(
+                    viewModel = createMeetingViewModel,
                     onScheduleClick = {
                         navController.navigate(Screen.CreateMeeting2.route) {
                             launchSingleTop = true
@@ -204,7 +211,14 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 )
             }
             composable(Screen.CreateMeeting2.route) {
+                // Share the ViewModel owned by CreateMeeting1 (it is always
+                // right below Create 2 in the back stack).
+                val parentEntry = remember(it) {
+                    navController.getBackStackEntry(Screen.CreateMeeting1.route)
+                }
+                val createMeetingViewModel: CreateMeetingViewModel = viewModel(parentEntry)
                 CreateMeetingScreen2(
+                    viewModel = createMeetingViewModel,
                     onVoteClick = {
                         // Flow finished: drop both create screens (and whatever
                         // was opened before them) and land on Home.
@@ -219,14 +233,10 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     }
                 )
             }
-            composable(Screen.MeetingDetail.route) { backStackEntry ->
-                val meetingId =
-                    backStackEntry.arguments?.getString("meetingId")?.toIntOrNull()
-                val meeting = sampleMeetings.find {
-                    it.id == meetingId
-                }
-
-                if (meeting != null) {
+            composable(Screen.MeetingDetail.route) {
+                // The ViewModel reads the "meetingId" route argument itself.
+                val detailViewModel: MeetingDetailViewModel = viewModel()
+                detailViewModel.meeting?.let { meeting ->
                     MeetingDetailScreen(
                         meeting = meeting,
                         onBackClick = {

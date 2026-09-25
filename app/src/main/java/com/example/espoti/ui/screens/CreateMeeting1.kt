@@ -19,9 +19,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import com.example.espoti.viewmodel.CreateMeetingViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,11 +41,12 @@ import androidx.compose.material3.Scaffold
 
 @Composable
 fun CreateMeetingScreen1(
-    onScheduleClick: () -> Unit
+    onScheduleClick: () -> Unit,
+    viewModel: CreateMeetingViewModel = viewModel()
 ) {
-    var whatToDo by remember { mutableStateOf("") }
-    var whatDay by remember { mutableStateOf("") }
-    var whatTime by remember { mutableStateOf("") }
+    val whatToDo by viewModel.whatToDo
+    val whatDay by viewModel.whatDay
+    val whatTime by viewModel.whatTime
 
     Scaffold { innerPadding ->
 
@@ -106,7 +106,7 @@ fun CreateMeetingScreen1(
             EspotiField(
                 label = "What are we going to do?",
                 value = whatToDo,
-                onValueChange = { whatToDo = it }
+                onValueChange = viewModel::onWhatToDoChange
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -114,7 +114,7 @@ fun CreateMeetingScreen1(
             EspotiField(
                 label = "What day?",
                 value = whatDay,
-                onValueChange = { whatDay = it }
+                onValueChange = viewModel::onWhatDayChange
             )
 
             Spacer(modifier = Modifier.height(5.dp))
@@ -124,7 +124,7 @@ fun CreateMeetingScreen1(
             EspotiField(
                 label = "What time?",
                 value = whatTime,
-                onValueChange = { whatTime = it }
+                onValueChange = viewModel::onWhatTimeChange
             )
 
             Spacer(modifier = Modifier.height(5.dp))

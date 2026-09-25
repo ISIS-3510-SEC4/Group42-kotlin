@@ -1,6 +1,7 @@
 package com.example.espoti.ui.components
 
 import androidx.compose.foundation.layout.Column
+import com.example.espoti.model.NoticeType
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -170,9 +171,6 @@ fun EspotiField(
         }
     }
 }
-
-/** What an [EspotiNoticeCard] is telling the user, which drives its color/icon. */
-enum class NoticeType { ERROR, INFO }
 
 /**
  * Dismissible card shown at the top of a screen for two cases: (1) form

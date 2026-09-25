@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1001218826519",
+    "project_id": "moviles-9132d",
+    "storage_bucket": "moviles-9132d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1001218826519:android:8cfc83f849d40d34a31752",
+        "android_client_info": {
+          "package_name": "com.example.espoti"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB6NKw7hvUSzy4AuAYHAdUNiIMPGqVIWJw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

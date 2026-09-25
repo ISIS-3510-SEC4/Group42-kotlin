@@ -35,6 +35,9 @@ import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
+import com.example.espoti.model.MeetingInvite
+import com.example.espoti.viewmodel.HomeViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 // ============================================================================
 // INICIO (Home) SCREEN
@@ -49,20 +52,11 @@ import com.example.espoti.ui.theme.SurfacePeach
 //   6. Bottom nav bar with a floating "+" button (EspotiBottomNav, below)
 // ============================================================================
 
-private data class Meeting(
-    val place: String,
-    val time: String,
-    val distance: String,
-    val peopleLabel: String
-)
-
-private val sampleMeetings = listOf(
-    Meeting("Restaurant", "2:00 pm", "2 km", "Ana and two more"),
-    Meeting("Park", "4:00 pm", "3 km", "Juan and two more")
-)
-
 @Composable
-fun HomeScreen(onCreateMeetingClick: () -> Unit) {
+fun HomeScreen(
+    onCreateMeetingClick: () -> Unit,
+    viewModel: HomeViewModel = viewModel()
+) {
     Scaffold { innerPadding ->
         Column(
             modifier = Modifier
@@ -95,7 +89,7 @@ fun HomeScreen(onCreateMeetingClick: () -> Unit) {
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                sampleMeetings.forEach { meeting -> MeetingCard(meeting) }
+                viewModel.upcomingInvites.forEach { meeting -> MeetingCard(meeting) }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -162,7 +156,7 @@ private fun HomeHeader() {
 }
 
 @Composable
-private fun MeetingCard(meeting: Meeting) {
+private fun MeetingCard(meeting: MeetingInvite) {
     Column(
         modifier = Modifier
             .width(160.dp)
