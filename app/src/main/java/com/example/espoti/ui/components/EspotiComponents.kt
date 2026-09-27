@@ -1,5 +1,8 @@
 package com.example.espoti.ui.components
 
+import android.content.ClipData
+import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import com.example.espoti.model.NoticeType
 import androidx.compose.foundation.layout.Row
@@ -14,8 +17,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -30,15 +36,26 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.espoti.ui.theme.BrandBrown
+import com.example.espoti.ui.theme.BrandOrange
+import com.example.espoti.ui.theme.IosevkaCharonMono
+import kotlinx.coroutines.launch
 
 // ============================================================================
 // REUSABLE UI PIECES
@@ -224,6 +241,63 @@ fun EspotiNoticeCard(
             IconButton(onClick = onDismiss) {
                 Icon(imageVector = Icons.Filled.Close, contentDescription = "Dismiss", tint = Color.White)
             }
+        }
+    }
+}
+
+/**
+ * The user's friend share code (e.g. "AXBZ12" on Friends/Profile): big,
+ * centered, set in Iosevka Charon Mono so it reads unambiguously as a code
+ * (no mixing up 0/O, 1/I like the general UI font would). Tapping it copies
+ * the code to the clipboard and confirms with a toast.
+ */
+@Composable
+fun EspotiCodeDisplay(code: String, modifier: Modifier = Modifier) {
+    val clipboard = LocalClipboard.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    Text(
+        text = code,
+        style = TextStyle(
+            fontFamily = IosevkaCharonMono,
+            fontWeight = FontWeight.Bold,
+            fontSize = 36.sp,
+            letterSpacing = 2.sp
+        ),
+        color = BrandBrown,
+        textAlign = TextAlign.Center,
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable {
+                scope.launch {
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText("Espoti friend code", code)))
+                }
+                Toast.makeText(context, "Code copied", Toast.LENGTH_SHORT).show()
+            }
+    )
+}
+
+/**
+ * The bell that replaces the old "☰" placeholder in every screen header
+ * (Home, Meetings, Friends, Profile, Edit Profile). Tapping it opens the
+ * lateral notifications panel - the panel itself, its open/close state and
+ * its data live once in EspotiNavHost (see NotificationsPanel), so every
+ * screen's bell shows the same list instead of each loading its own.
+ */
+@Composable
+fun EspotiNotificationsBell(
+    hasUnreadNotifications: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // ICON SPOT: placeholder bell until the real notifications icon is provided.
+    BadgedBox(
+        modifier = modifier,
+        badge = { if (hasUnreadNotifications) Badge(containerColor = BrandOrange) }
+    ) {
+        IconButton(onClick = onClick) {
+            Icon(imageVector = Icons.Filled.Notifications, contentDescription = "Notifications", tint = BrandBrown)
         }
     }
 }

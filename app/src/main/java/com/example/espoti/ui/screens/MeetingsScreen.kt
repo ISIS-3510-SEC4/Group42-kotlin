@@ -26,6 +26,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.unit.dp
 import com.example.espoti.ui.components.EspotiLogo
+import com.example.espoti.ui.components.EspotiNotificationsBell
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.TextCream
 import com.example.espoti.ui.components.UpcomingMeetingCard
@@ -39,6 +40,8 @@ import com.example.espoti.ui.components.CanceledMeetingCard
 @Composable
 fun MeetingsScreen(
     onDetailClick: (Meeting) -> Unit,
+    hasUnreadNotifications: Boolean = false,
+    onNotificationsClick: () -> Unit = {},
     viewModel: MeetingsViewModel = viewModel()
 ) {
     val selectedTab by viewModel.selectedTab
@@ -54,7 +57,7 @@ fun MeetingsScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
 
-            MeetingsHeader()
+            MeetingsHeader(hasUnreadNotifications = hasUnreadNotifications, onNotificationsClick = onNotificationsClick)
             Spacer(modifier = Modifier.height(24.dp))
 
             MeetingsTabs(selectedTab=selectedTab,
@@ -99,18 +102,14 @@ fun MeetingsScreen(
 }
 
 @Composable
-private fun MeetingsHeader() {
+private fun MeetingsHeader(hasUnreadNotifications: Boolean, onNotificationsClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         EspotiLogo(size = 55.dp)
-        Text(
-            text = "☰",
-            style = MaterialTheme.typography.headlineMedium,
-            color=BrandBrown
-        )
+        EspotiNotificationsBell(hasUnreadNotifications = hasUnreadNotifications, onClick = onNotificationsClick)
     }
 }
 

@@ -30,6 +30,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.espoti.ui.components.EspotiLogo
+import com.example.espoti.ui.components.EspotiNotificationsBell
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
@@ -55,6 +56,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun HomeScreen(
     onCreateMeetingClick: () -> Unit,
+    hasUnreadNotifications: Boolean = false,
+    onNotificationsClick: () -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     Scaffold { innerPadding ->
@@ -66,7 +69,7 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            HomeHeader()
+            HomeHeader(hasUnreadNotifications = hasUnreadNotifications, onNotificationsClick = onNotificationsClick)
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -121,7 +124,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeHeader() {
+private fun HomeHeader(hasUnreadNotifications: Boolean, onNotificationsClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -144,14 +147,7 @@ private fun HomeHeader() {
             }
         }
 
-        // ICON SPOT: hamburger menu. Replace with an IconButton +
-        // Icons.Default.Menu (from "material-icons-extended") once you add
-        // a real drawer/menu; plain text keeps this dependency-free for now.
-        Text(
-            text = "☰",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+        EspotiNotificationsBell(hasUnreadNotifications = hasUnreadNotifications, onClick = onNotificationsClick)
     }
 }
 

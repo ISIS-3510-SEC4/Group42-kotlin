@@ -29,9 +29,14 @@ import com.example.espoti.R
 //                         anything meant to be read at length, since Inter
 //                         is tuned for on-screen legibility at small sizes.
 //
+// A fourth font (not in general.txt, requested separately) is used for one
+// specific spot: Iosevka Charon Mono -> the friend share code (see
+// IosevkaCharonMono / EspotiCodeDisplay in EspotiComponents.kt).
+//
 // The .ttf files live in app/src/main/res/font/ (irish_grover.ttf,
 // plus_jakarta_sans.ttf, inter.ttf - the last two are variable fonts, so a
-// single file covers every weight via FontVariation below).
+// single file covers every weight via FontVariation below; iosevka_charon_mono.ttf
+// / iosevka_charon_mono_bold.ttf are two static weights instead).
 //
 // WHERE EACH STYLE IS USED IN THIS APP:
 //   EspotiLogoStyle -> the "Espoti" wordmark (WelcomeScreen, Login, Registro)
@@ -73,6 +78,14 @@ val Inter = FontFamily(
     Font(R.font.inter, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(500))),
     Font(R.font.inter, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(600))),
     Font(R.font.inter, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(700)))
+)
+
+/** Monospace font (Iosevka Charon Mono) - used ONLY for the user's friend
+ *  share code (e.g. "AXBZ12" on Friends/Profile), so it reads unambiguously
+ *  as a code rather than a word. */
+val IosevkaCharonMono = FontFamily(
+    Font(R.font.iosevka_charon_mono, FontWeight.Normal),
+    Font(R.font.iosevka_charon_mono_bold, FontWeight.Bold)
 )
 
 /** Style for the "Espoti" wordmark specifically - not part of Typography()

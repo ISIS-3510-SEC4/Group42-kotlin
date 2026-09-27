@@ -37,7 +37,11 @@ data class User(
     val description: String = "",
     val profileImg: String = "",
     val type: UserType = UserType.FRIEND,
-    val preferences: List<ActivityType> = emptyList()
+    val preferences: List<ActivityType> = emptyList(),
+    // Diagram's "maxium: ENUM" (Profile screen's "Maximum radio"): stored as a
+    // plain km radius instead of an enum, matching the km units the backend's
+    // recommendation proximity search already uses.
+    val maxRadiusKm: Int = 10
 )
 
 /** Document friendships/{id}. [userIds] always holds the 2 users (diagram 2..2). */

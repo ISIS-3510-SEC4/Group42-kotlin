@@ -26,6 +26,12 @@ open class UserRepository(
             .documents.firstOrNull()?.let { it.toObject(User::class.java)?.copy(id = it.id) }
     }
 
+    /** Used by Register to enforce unique usernames. */
+    open suspend fun findByUsername(username: String): Result<User?> = runCatching {
+        users.whereEqualTo("username", username).limit(1).get().await()
+            .documents.firstOrNull()?.let { it.toObject(User::class.java)?.copy(id = it.id) }
+    }
+
     open suspend fun updatePreferences(uid: String, preferences: List<ActivityType>): Result<Unit> = runCatching {
         users.document(uid).update("preferences", preferences.map { it.name }).await()
         Unit

@@ -47,13 +47,14 @@ import com.example.espoti.util.EMAIL_EXTENSIONS_HINT
 //   1. Small logo + "Espoti" wordmark, centered
 //   2. Notice card (only visible when there's a validation error, or the
 //      user taps something not implemented yet - social login)
-//   3. Email field
-//   4. Confirm Email field
-//   5. Password field (with show/hide toggle)
-//   6. Confirm password field (with show/hide toggle)
-//   7. "Register" button (brown pill, ~55% width, centered)
-//   8. Google/Facebook icon row
-//   9. "Already have an account? Login" -> goes back to Login
+//   3. Username field
+//   4. Email field
+//   5. Confirm Email field
+//   6. Password field (with show/hide toggle)
+//   7. Confirm password field (with show/hide toggle)
+//   8. "Register" button (brown pill, ~55% width, centered)
+//   9. Google/Facebook icon row
+//   10. "Already have an account? Login" -> goes back to Login
 // ============================================================================
 @Composable
 fun RegisterScreen(
@@ -61,11 +62,13 @@ fun RegisterScreen(
     onNavigateToLogin: () -> Unit,
     viewModel: RegisterViewModel = viewModel()
 ) {
+    val username by viewModel.username
     val email by viewModel.email
     val confirmEmail by viewModel.confirmEmail
     val password by viewModel.password
     val confirmPassword by viewModel.confirmPassword
 
+    val usernameError by viewModel.usernameError
     val emailError by viewModel.emailError
     val confirmEmailError by viewModel.confirmEmailError
     val passwordError by viewModel.passwordError
@@ -103,6 +106,15 @@ fun RegisterScreen(
                 )
             }
         }
+
+        EspotiField(
+            label = "Username",
+            value = username,
+            onValueChange = viewModel::onUsernameChange,
+            isError = usernameError
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         EspotiField(
             label = "Email",

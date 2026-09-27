@@ -39,13 +39,15 @@ class AuthViewModelsTest {
     }
 
     private class FakeUserRepository(
-        private val saveResult: Result<Unit> = Result.success(Unit)
+        private val saveResult: Result<Unit> = Result.success(Unit),
+        private val findByUsernameResult: Result<User?> = Result.success(null)
     ) : UserRepository() {
         var saved: User? = null
         override suspend fun saveUser(user: User): Result<Unit> {
             saved = user
             return saveResult
         }
+        override suspend fun findByUsername(username: String) = findByUsernameResult
     }
 
     @Before
@@ -92,6 +94,7 @@ class AuthViewModelsTest {
     // ---- Register -------------------------------------------------------
 
     private fun RegisterViewModel.fillValidForm() {
+        onUsernameChange("ana99")
         onEmailChange("ana@example.com")
         onConfirmEmailChange("ana@example.com")
         onPasswordChange("secret1")
@@ -99,8 +102,22 @@ class AuthViewModelsTest {
     }
 
     @Test
+    fun register_withBlankUsername_flagsUsernameAndSkipsSuccess() {
+        val vm = RegisterViewModel(FakeAuthRepository(), FakeUserRepository())
+        vm.onEmailChange("ana@example.com")
+        vm.onConfirmEmailChange("ana@example.com")
+        vm.onPasswordChange("secret1")
+        vm.onConfirmPasswordChange("secret1")
+        var succeeded = false
+        vm.register { succeeded = true }
+        assertTrue(vm.usernameError.value)
+        assertFalse(succeeded)
+    }
+
+    @Test
     fun register_withMismatchedPasswords_flagsConfirmPassword() {
         val vm = RegisterViewModel(FakeAuthRepository(), FakeUserRepository())
+        vm.onUsernameChange("ana99")
         vm.onEmailChange("ana@example.com")
         vm.onConfirmEmailChange("ana@example.com")
         vm.onPasswordChange("secret1")
@@ -112,6 +129,20 @@ class AuthViewModelsTest {
     }
 
     @Test
+    fun register_withUsernameTaken_flagsUsernameAndSkipsSuccess() {
+        val vm = RegisterViewModel(
+            FakeAuthRepository(),
+            FakeUserRepository(findByUsernameResult = Result.success(User(id = "other-uid", username = "ana99")))
+        )
+        vm.fillValidForm()
+        var succeeded = false
+        vm.register { succeeded = true }
+        assertTrue(vm.usernameError.value)
+        assertFalse(succeeded)
+        assertFalse(vm.isLoading.value)
+    }
+
+    @Test
     fun register_withValidFields_savesProfileAndCallsSuccess() {
         val users = FakeUserRepository()
         val vm = RegisterViewModel(FakeAuthRepository(), users)
@@ -120,7 +151,7 @@ class AuthViewModelsTest {
         vm.register { succeeded = true }
         assertTrue(succeeded)
         assertEquals("uid-1", users.saved?.id)
-        assertEquals("ana", users.saved?.username)
+        assertEquals("ana99", users.saved?.username)
         assertEquals(6, users.saved?.code?.length)
     }
 

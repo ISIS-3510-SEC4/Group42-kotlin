@@ -28,4 +28,10 @@ class FriendshipRepository(
         friendships.whereArrayContains("userIds", uid).get().await()
             .documents.mapNotNull { d -> d.toObject(Friendship::class.java)?.copy(id = d.id) }
     }
+
+    /** Declining a request: there's no "REJECTED" status, so it's just removed. */
+    suspend fun deleteFriendship(id: String): Result<Unit> = runCatching {
+        friendships.document(id).delete().await()
+        Unit
+    }
 }

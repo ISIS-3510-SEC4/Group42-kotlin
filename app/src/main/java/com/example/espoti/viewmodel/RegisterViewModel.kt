@@ -26,6 +26,9 @@ class RegisterViewModel(
     private val userRepository: UserRepository = UserRepository()
 ) : ViewModel() {
 
+    private val _username = mutableStateOf("")
+    val username: State<String> = _username
+
     private val _email = mutableStateOf("")
     val email: State<String> = _email
 
@@ -37,6 +40,9 @@ class RegisterViewModel(
 
     private val _confirmPassword = mutableStateOf("")
     val confirmPassword: State<String> = _confirmPassword
+
+    private val _usernameError = mutableStateOf(false)
+    val usernameError: State<Boolean> = _usernameError
 
     private val _emailError = mutableStateOf(false)
     val emailError: State<Boolean> = _emailError
@@ -58,6 +64,11 @@ class RegisterViewModel(
 
     private val _noticeType = mutableStateOf(NoticeType.ERROR)
     val noticeType: State<NoticeType> = _noticeType
+
+    fun onUsernameChange(value: String) {
+        _username.value = value
+        _usernameError.value = false
+    }
 
     fun onEmailChange(value: String) {
         _email.value = value
@@ -91,12 +102,17 @@ class RegisterViewModel(
     /** Validates the form, then creates account + profile; calls [onSuccess] only if both succeed. */
     fun register(onSuccess: () -> Unit) {
         if (_isLoading.value) return
+        _usernameError.value = false
         _emailError.value = false
         _confirmEmailError.value = false
         _passwordError.value = false
         _confirmPasswordError.value = false
 
         val error = when {
+            _username.value.isBlank() -> {
+                _usernameError.value = true
+                "Please enter a username."
+            }
             _email.value.isBlank() -> {
                 _emailError.value = true
                 "Please enter your email."
@@ -139,17 +155,32 @@ class RegisterViewModel(
 
         _isLoading.value = true
         viewModelScope.launch {
+            val username = _username.value.trim()
             val email = _email.value.trim()
+
+            // Checked before creating the Firebase Auth account so a taken
+            // username never leaves behind an orphaned account to roll back.
+            val existing = userRepository.findByUsername(username).getOrElse {
+                _isLoading.value = false
+                showNotice("Something went wrong. Please try again.", NoticeType.ERROR)
+                return@launch
+            }
+            if (existing != null) {
+                _usernameError.value = true
+                _isLoading.value = false
+                showNotice("That username is already taken.", NoticeType.ERROR)
+                return@launch
+            }
+
             val uid = authRepository.register(email, _password.value).getOrElse {
                 _isLoading.value = false
                 showNotice(authErrorMessage(it), NoticeType.ERROR)
                 return@launch
             }
 
-            // The form has no username field yet, so derive one from the email.
             val profile = User(
                 id = uid,
-                username = email.substringBefore("@"),
+                username = username,
                 email = email,
                 code = generateFriendCode()
             )
