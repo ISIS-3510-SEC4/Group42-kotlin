@@ -23,7 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.espoti.ui.components.EspotiPrimaryButton
-import com.example.espoti.ui.model.Meeting
+import com.example.espoti.model.Meeting
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.SurfacePeach

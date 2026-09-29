@@ -30,11 +30,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.espoti.ui.components.EspotiLogo
+import com.example.espoti.ui.components.EspotiNotificationsBell
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
+import com.example.espoti.model.MeetingInvite
+import com.example.espoti.viewmodel.HomeViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 // ============================================================================
 // INICIO (Home) SCREEN
@@ -49,20 +53,13 @@ import com.example.espoti.ui.theme.SurfacePeach
 //   6. Bottom nav bar with a floating "+" button (EspotiBottomNav, below)
 // ============================================================================
 
-private data class Meeting(
-    val place: String,
-    val time: String,
-    val distance: String,
-    val peopleLabel: String
-)
-
-private val sampleMeetings = listOf(
-    Meeting("Restaurant", "2:00 pm", "2 km", "Ana and two more"),
-    Meeting("Park", "4:00 pm", "3 km", "Juan and two more")
-)
-
 @Composable
-fun HomeScreen(onCreateMeetingClick: () -> Unit) {
+fun HomeScreen(
+    onCreateMeetingClick: () -> Unit,
+    hasUnreadNotifications: Boolean = false,
+    onNotificationsClick: () -> Unit = {},
+    viewModel: HomeViewModel = viewModel()
+) {
     Scaffold { innerPadding ->
         Column(
             modifier = Modifier
@@ -72,7 +69,7 @@ fun HomeScreen(onCreateMeetingClick: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-            HomeHeader()
+            HomeHeader(hasUnreadNotifications = hasUnreadNotifications, onNotificationsClick = onNotificationsClick)
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -95,7 +92,7 @@ fun HomeScreen(onCreateMeetingClick: () -> Unit) {
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                sampleMeetings.forEach { meeting -> MeetingCard(meeting) }
+                viewModel.upcomingInvites.forEach { meeting -> MeetingCard(meeting) }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -127,7 +124,7 @@ fun HomeScreen(onCreateMeetingClick: () -> Unit) {
 }
 
 @Composable
-private fun HomeHeader() {
+private fun HomeHeader(hasUnreadNotifications: Boolean, onNotificationsClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -150,19 +147,12 @@ private fun HomeHeader() {
             }
         }
 
-        // ICON SPOT: hamburger menu. Replace with an IconButton +
-        // Icons.Default.Menu (from "material-icons-extended") once you add
-        // a real drawer/menu; plain text keeps this dependency-free for now.
-        Text(
-            text = "☰",
-            style = MaterialTheme.typography.headlineMedium,
-            color = MaterialTheme.colorScheme.onBackground
-        )
+        EspotiNotificationsBell(hasUnreadNotifications = hasUnreadNotifications, onClick = onNotificationsClick)
     }
 }
 
 @Composable
-private fun MeetingCard(meeting: Meeting) {
+private fun MeetingCard(meeting: MeetingInvite) {
     Column(
         modifier = Modifier
             .width(160.dp)

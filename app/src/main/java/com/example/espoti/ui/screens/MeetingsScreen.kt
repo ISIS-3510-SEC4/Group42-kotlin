@@ -19,9 +19,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,20 +26,26 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.unit.dp
 import com.example.espoti.ui.components.EspotiLogo
+import com.example.espoti.ui.components.EspotiNotificationsBell
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.TextCream
 import com.example.espoti.ui.components.UpcomingMeetingCard
-import com.example.espoti.ui.model.Meeting
-import com.example.espoti.ui.model.sampleMeetings
+import com.example.espoti.model.Meeting
+import com.example.espoti.model.MeetingTab
+import com.example.espoti.viewmodel.MeetingsViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.espoti.ui.components.PreviousMeetingCard
 import com.example.espoti.ui.components.CanceledMeetingCard
 
-enum class MeetingTab {
-    UPCOMING, PREVIOUS, CANCELED
-}
 @Composable
-fun MeetingsScreen(onDetailClick: (Meeting) -> Unit) {
-    var selectedTab by remember { mutableStateOf((MeetingTab.UPCOMING)) }
+fun MeetingsScreen(
+    onDetailClick: (Meeting) -> Unit,
+    hasUnreadNotifications: Boolean = false,
+    onNotificationsClick: () -> Unit = {},
+    viewModel: MeetingsViewModel = viewModel()
+) {
+    val selectedTab by viewModel.selectedTab
+    val meetings = viewModel.meetings
     Scaffold { innerPadding ->
 
         Column(
@@ -54,18 +57,18 @@ fun MeetingsScreen(onDetailClick: (Meeting) -> Unit) {
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
 
-            MeetingsHeader()
+            MeetingsHeader(hasUnreadNotifications = hasUnreadNotifications, onNotificationsClick = onNotificationsClick)
             Spacer(modifier = Modifier.height(24.dp))
 
             MeetingsTabs(selectedTab=selectedTab,
-                        onTabSelected = { newTab -> selectedTab = newTab}
+                        onTabSelected = viewModel::onTabSelected
             )
             Spacer(modifier = Modifier.height(24.dp))
 
             when (selectedTab) {
 
                 MeetingTab.UPCOMING -> {
-                    sampleMeetings.forEach { meeting ->
+                    meetings.forEach { meeting ->
 
 
                         UpcomingMeetingCard(
@@ -79,14 +82,14 @@ fun MeetingsScreen(onDetailClick: (Meeting) -> Unit) {
                 }
                 MeetingTab.PREVIOUS -> {
                     PreviousMeetingCard(
-                        meeting = sampleMeetings[0],
+                        meeting = meetings[0],
                         date = "Marzo 2, 2026",
                         showMemories = true
                     )
                 }
                 MeetingTab.CANCELED -> {
                     CanceledMeetingCard(
-                        meeting = sampleMeetings[0],
+                        meeting = meetings[0],
                         date = "Tomorrow",
                         onAttendClick = {
                             // Backend :(
@@ -99,18 +102,14 @@ fun MeetingsScreen(onDetailClick: (Meeting) -> Unit) {
 }
 
 @Composable
-private fun MeetingsHeader() {
+private fun MeetingsHeader(hasUnreadNotifications: Boolean, onNotificationsClick: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         EspotiLogo(size = 55.dp)
-        Text(
-            text = "☰",
-            style = MaterialTheme.typography.headlineMedium,
-            color=BrandBrown
-        )
+        EspotiNotificationsBell(hasUnreadNotifications = hasUnreadNotifications, onClick = onNotificationsClick)
     }
 }
 

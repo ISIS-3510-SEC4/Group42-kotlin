@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,8 +32,8 @@ import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.SurfacePeach
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
+import com.example.espoti.viewmodel.CreateMeetingViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -42,9 +41,10 @@ import androidx.compose.material3.Scaffold
 
 @Composable
 fun CreateMeetingScreen2(
-    onVoteClick: () -> Unit
+    onVoteClick: () -> Unit,
+    viewModel: CreateMeetingViewModel = viewModel()
 ) {
-    var selectedRestaurant by remember { mutableStateOf<String?>(null) }
+    val selectedRestaurant by viewModel.selectedRestaurant
 
     Scaffold { innerPadding ->
 
@@ -104,7 +104,7 @@ fun CreateMeetingScreen2(
                 distance = "1 Km away",
                 isSelected = selectedRestaurant == "Restaurante 1",
                 onClick = {
-                    selectedRestaurant = "Restaurante 1"
+                    viewModel.onRestaurantSelected("Restaurante 1")
                 }
             )
 
@@ -116,7 +116,7 @@ fun CreateMeetingScreen2(
                 distance = "2 Km away",
                 isSelected = selectedRestaurant == "Restaurante 2",
                 onClick = {
-                    selectedRestaurant = "Restaurante 2"
+                    viewModel.onRestaurantSelected("Restaurante 2")
                 }
             )
 
@@ -128,7 +128,7 @@ fun CreateMeetingScreen2(
                 distance = "1.5 Km away",
                 isSelected = selectedRestaurant == "Restaurante 3",
                 onClick = {
-                    selectedRestaurant = "Restaurante 3"
+                    viewModel.onRestaurantSelected("Restaurante 3")
                 }
             )
 

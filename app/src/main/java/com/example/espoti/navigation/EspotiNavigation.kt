@@ -1,14 +1,20 @@
 package com.example.espoti.navigation
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imeAnimationTarget
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -25,9 +31,19 @@ import com.example.espoti.ui.screens.MeetingDetailScreen
 import com.example.espoti.ui.screens.MeetingsScreen
 import com.example.espoti.ui.screens.RegisterScreen
 import com.example.espoti.ui.screens.WelcomeScreen
-import com.example.espoti.ui.model.sampleMeetings
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.espoti.viewmodel.CreateMeetingViewModel
+import com.example.espoti.viewmodel.MeetingDetailViewModel
 import com.example.espoti.ui.screens.CreateMeetingScreen1
 import com.example.espoti.ui.screens.CreateMeetingScreen2
+import com.example.espoti.ui.screens.FriendsScreen
+import com.example.espoti.ui.screens.ProfileScreen
+import com.example.espoti.ui.screens.EditProfileScreen
+import com.example.espoti.ui.components.NotificationsPanel
+import com.example.espoti.viewmodel.NotificationsViewModel
 
 // ============================================================================
 // SCREEN ROUTES
@@ -74,10 +90,18 @@ sealed class Screen(
         }
 
     }
+    object Friends : Screen("friends", BottomNavItem.FRIENDS) // Amigos
+    object Profile : Screen("profile", BottomNavItem.PROFILE) // Perfil
+    // Opened from Profile's "Edit Profile" button; keeps the Profile tab
+    // highlighted but returns to Profile (not Home) on back, like CreateMeeting.
+    object EditProfile : Screen("edit_profile", BottomNavItem.PROFILE, BackBehavior.PREVIOUS)
 
     companion object {
         private val all by lazy {
-            listOf(Welcome, Login, Register, Home, Meetings, CreateMeeting1, CreateMeeting2, MeetingDetail)
+            listOf(
+                Welcome, Login, Register, Home, Meetings, CreateMeeting1, CreateMeeting2,
+                MeetingDetail, Friends, Profile, EditProfile
+            )
         }
 
         /** Looks up a screen by the route pattern reported by the NavController. */
@@ -102,12 +126,29 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     val keyboardInsets = WindowInsets.imeAnimationTarget
     val keyboardVisible = keyboardInsets.getBottom(LocalDensity.current) > 0
 
+    // One instance for the whole app (scoped here, not per-screen) so every
+    // screen's bell shows the same notifications and the panel keeps its
+    // list across tab switches.
+    val notificationsViewModel: NotificationsViewModel = viewModel()
+    val notifications by notificationsViewModel.notifications
+    var showNotifications by remember { mutableStateOf(false) }
+
+    // This is a one-shot read (no live listener - see NotificationsViewModel),
+    // so re-fetch every time the panel opens instead of relying on the single
+    // load from when this ViewModel was first created.
+    LaunchedEffect(showNotifications) {
+        if (showNotifications) notificationsViewModel.refresh()
+    }
+
     // Phone back button: screens marked GO_HOME jump straight to Home, dropping
     // everything opened in between (e.g. Meetings -> Detail -> back = Home).
     BackHandler(enabled = currentScreen?.backBehavior == BackBehavior.GO_HOME) {
         navController.popBackStack(Screen.Home.route, inclusive = false)
     }
 
+    // Outer Box so the notifications panel can overlay EVERYTHING below,
+    // including the bottom nav bar, instead of just the Scaffold's content area.
+    Box(modifier = Modifier.fillMaxSize()) {
     // Single bottom bar for the whole app. It is only shown on screens that
     // declare a `bottomNavItem`, and every tab behaves the same everywhere.
     Scaffold(
@@ -121,14 +162,8 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     selectedItem = selectedTab,
                     onHomeClick = { navController.navigateToTab(Screen.Home) },
                     onMeetingsClick = { navController.navigateToTab(Screen.Meetings) },
-                    // No Friends screen yet: wire it here once it exists.
-                    onFriendsClick = {},
-                    // Placeholder: Profile acts as logout until a Profile screen exists.
-                    onProfileClick = {
-                        navController.navigate(Screen.Welcome.route) {
-                            popUpTo(0) // clear the entire back stack
-                        }
-                    },
+                    onFriendsClick = { navController.navigateToTab(Screen.Friends) },
+                    onProfileClick = { navController.navigateToTab(Screen.Profile) },
                     onAddClick = { navController.navigateToCreateMeeting() }
                 )
             }
@@ -157,6 +192,9 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
             composable(Screen.Login.route) {
                 LoginScreen(
                     onLoginSuccess = {
+                        // The shared NotificationsViewModel may still be holding
+                        // a previous account's (stale) data - reload for this one.
+                        notificationsViewModel.refresh()
                         // Clear Login/Welcome from the back stack so the phone
                         // back button doesn't return to them after logging in.
                         navController.navigate(Screen.Home.route) {
@@ -177,6 +215,7 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
             composable(Screen.Register.route) {
                 RegisterScreen(
                     onRegisterSuccess = {
+                        notificationsViewModel.refresh()
                         navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.Welcome.route) { inclusive = true }
                         }
@@ -191,11 +230,17 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
             }
             composable(Screen.Home.route) {
                 HomeScreen(
-                    onCreateMeetingClick = { navController.navigateToCreateMeeting() }
+                    onCreateMeetingClick = { navController.navigateToCreateMeeting() },
+                    hasUnreadNotifications = notifications.isNotEmpty(),
+                    onNotificationsClick = { showNotifications = true }
                 )
             }
-            composable(Screen.CreateMeeting1.route) {
+            composable(Screen.CreateMeeting1.route) { backStackEntry ->
+                // Scoped to this entry so CreateMeeting2 reuses the same state
+                // (see CreateMeeting2's composable below).
+                val createMeetingViewModel: CreateMeetingViewModel = viewModel(backStackEntry)
                 CreateMeetingScreen1(
+                    viewModel = createMeetingViewModel,
                     onScheduleClick = {
                         navController.navigate(Screen.CreateMeeting2.route) {
                             launchSingleTop = true
@@ -204,7 +249,14 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 )
             }
             composable(Screen.CreateMeeting2.route) {
+                // Share the ViewModel owned by CreateMeeting1 (it is always
+                // right below Create 2 in the back stack).
+                val parentEntry = remember(it) {
+                    navController.getBackStackEntry(Screen.CreateMeeting1.route)
+                }
+                val createMeetingViewModel: CreateMeetingViewModel = viewModel(parentEntry)
                 CreateMeetingScreen2(
+                    viewModel = createMeetingViewModel,
                     onVoteClick = {
                         // Flow finished: drop both create screens (and whatever
                         // was opened before them) and land on Home.
@@ -216,17 +268,23 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 MeetingsScreen(
                     onDetailClick = { meeting ->
                         navController.navigate(Screen.MeetingDetail.createRoute(meeting.id))
-                    }
+                    },
+                    hasUnreadNotifications = notifications.isNotEmpty(),
+                    onNotificationsClick = { showNotifications = true }
                 )
             }
-            composable(Screen.MeetingDetail.route) { backStackEntry ->
-                val meetingId =
-                    backStackEntry.arguments?.getString("meetingId")?.toIntOrNull()
-                val meeting = sampleMeetings.find {
-                    it.id == meetingId
-                }
-
-                if (meeting != null) {
+            composable(Screen.MeetingDetail.route) {
+                // The ViewModel reads the "meetingId" route argument itself.
+                // Needs an explicit factory: the default one only matches a
+                // ViewModel constructor of exactly (SavedStateHandle), so it
+                // crashed here since this one also has a `repository` param
+                // (even though it has a default value).
+                val detailViewModel: MeetingDetailViewModel = viewModel(
+                    factory = viewModelFactory {
+                        initializer { MeetingDetailViewModel(createSavedStateHandle()) }
+                    }
+                )
+                detailViewModel.meeting?.let { meeting ->
                     MeetingDetailScreen(
                         meeting = meeting,
                         onBackClick = {
@@ -237,7 +295,46 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     )
                 }
             }
+            composable(Screen.Friends.route) {
+                FriendsScreen(
+                    hasUnreadNotifications = notifications.isNotEmpty(),
+                    onNotificationsClick = { showNotifications = true }
+                )
+            }
+            composable(Screen.Profile.route) {
+                ProfileScreen(
+                    onEditProfileClick = { navController.navigate(Screen.EditProfile.route) },
+                    // No backend yet: both just drop the user back to Welcome
+                    // and clear the stack, same placeholder as the old logout.
+                    onLogoutClick = {
+                        notificationsViewModel.clear()
+                        navController.navigate(Screen.Welcome.route) { popUpTo(0) }
+                    },
+                    onDeleteAccountClick = {
+                        notificationsViewModel.clear()
+                        navController.navigate(Screen.Welcome.route) { popUpTo(0) }
+                    },
+                    hasUnreadNotifications = notifications.isNotEmpty(),
+                    onNotificationsClick = { showNotifications = true }
+                )
+            }
+            composable(Screen.EditProfile.route) {
+                EditProfileScreen(
+                    onSaveClick = { navController.popBackStack() },
+                    hasUnreadNotifications = notifications.isNotEmpty(),
+                    onNotificationsClick = { showNotifications = true }
+                )
+            }
         }
+    }
+
+    NotificationsPanel(
+        visible = showNotifications,
+        notifications = notifications,
+        onDismiss = { showNotifications = false },
+        onAcceptFriendInvite = notificationsViewModel::onAcceptFriendInvite,
+        onDeclineFriendInvite = notificationsViewModel::onDeclineFriendInvite
+    )
     }
 }
 

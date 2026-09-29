@@ -20,9 +20,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -30,17 +27,18 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.espoti.ui.components.EspotiField
 import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiNoticeCard
 import com.example.espoti.ui.components.EspotiPrimaryButton
-import com.example.espoti.ui.components.NoticeType
+import com.example.espoti.model.NoticeType
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiLogoStyle
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.util.EMAIL_EXTENSIONS_HINT
-import com.example.espoti.util.isValidEmail
+import com.example.espoti.viewmodel.LoginViewModel
 
 // ============================================================================
 // LOGIN SCREEN
@@ -63,48 +61,16 @@ import com.example.espoti.util.isValidEmail
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
-    onNavigateToRegister: () -> Unit
+    onNavigateToRegister: () -> Unit,
+    viewModel: LoginViewModel = viewModel()
 ) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-
-    var emailError by remember { mutableStateOf(false) }
-    var passwordError by remember { mutableStateOf(false) }
-
-    var noticeMessage by remember { mutableStateOf<String?>(null) }
-    var noticeType by remember { mutableStateOf(NoticeType.ERROR) }
-
-    fun showNotice(message: String, type: NoticeType) {
-        noticeMessage = message
-        noticeType = type
-    }
-
-    fun validateAndLogin() {
-        emailError = false
-        passwordError = false
-
-        val error = when {
-            email.isBlank() -> {
-                emailError = true
-                "Please enter your email."
-            }
-            !isValidEmail(email) -> {
-                emailError = true
-                "Enter a valid email address (e.g. name@example.com). $EMAIL_EXTENSIONS_HINT."
-            }
-            password.isBlank() -> {
-                passwordError = true
-                "Please enter your password."
-            }
-            else -> null
-        }
-
-        if (error != null) {
-            showNotice(error, NoticeType.ERROR)
-        } else {
-            onLoginSuccess()
-        }
-    }
+    val email by viewModel.email
+    val password by viewModel.password
+    val emailError by viewModel.emailError
+    val passwordError by viewModel.passwordError
+    val noticeMessage by viewModel.noticeMessage
+    val noticeType by viewModel.noticeType
+    val isLoading by viewModel.isLoading
 
     Column(
         modifier = Modifier
@@ -128,7 +94,7 @@ fun LoginScreen(
             noticeMessage?.let { message ->
                 EspotiNoticeCard(
                     message = message,
-                    onDismiss = { noticeMessage = null },
+                    onDismiss = viewModel::dismissNotice,
                     type = noticeType,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
@@ -138,7 +104,7 @@ fun LoginScreen(
         EspotiField(
             label = "Email",
             value = email,
-            onValueChange = { email = it; emailError = false },
+            onValueChange = viewModel::onEmailChange,
             keyboardType = KeyboardType.Email,
             supportingText = EMAIL_EXTENSIONS_HINT,
             isError = emailError
@@ -149,7 +115,7 @@ fun LoginScreen(
         EspotiField(
             label = "Password",
             value = password,
-            onValueChange = { password = it; passwordError = false },
+            onValueChange = viewModel::onPasswordChange,
             isPassword = true,
             isError = passwordError
         )
@@ -158,8 +124,9 @@ fun LoginScreen(
 
         // Narrower, centered button - matches Figma (not full width here Has to change)
         EspotiPrimaryButton(
-            text = "Login",
-            onClick = { validateAndLogin() },
+            text = if (isLoading) "Logging in..." else "Login",
+            onClick = { viewModel.login(onLoginSuccess) },
+            enabled = !isLoading,
             modifier = Modifier
                 .fillMaxWidth(0.55f)
                 .height(48.dp)
@@ -178,7 +145,7 @@ fun LoginScreen(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable {
-                    showNotice("Google login isn't implemented yet.", NoticeType.INFO)
+                    viewModel.showNotice("Google login isn't implemented yet.", NoticeType.INFO)
                 }
             )
             Text(
@@ -187,7 +154,7 @@ fun LoginScreen(
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable {
-                    showNotice("Facebook login isn't implemented yet.", NoticeType.INFO)
+                    viewModel.showNotice("Facebook login isn't implemented yet.", NoticeType.INFO)
                 }
             )
         }
@@ -208,7 +175,7 @@ fun LoginScreen(
         Spacer(modifier = Modifier.height(4.dp))
 
         TextButton(onClick = {
-            showNotice("Password recovery isn't implemented yet.", NoticeType.INFO)
+            viewModel.showNotice("Password recovery isn't implemented yet.", NoticeType.INFO)
         }) {
             Text("Forgot Password?", color = BrandOrange, style = MaterialTheme.typography.bodyMedium)
         }

@@ -18,7 +18,9 @@ import com.example.espoti.ui.theme.EspotiTheme
 // and how you move between them. There is normally nothing to edit here -
 // go to:
 //   - navigation/EspotiNavigation.kt to change routes/navigation logic
-//   - ui/screens/*.kt to change what's ON each screen
+//   - ui/screens/*.kt to change what's ON each screen (Views)
+//   - viewmodel/*.kt to change the state/logic behind each screen
+//   - data/repository/*.kt and model/*.kt to change the data itself
 //   - ui/theme/*.kt to change colors/fonts app-wide
 // ============================================================================
 class MainActivity : ComponentActivity() {
