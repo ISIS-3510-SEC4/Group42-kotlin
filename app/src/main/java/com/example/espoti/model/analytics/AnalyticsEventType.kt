@@ -1,0 +1,19 @@
+package com.example.espoti.model.analytics
+
+enum class AnalyticsEventType {
+    RECOMMENDATION_REQUESTED,
+    RECOMMENDATION_DISPLAYED,
+    RECOMMENDATION_VIEWED,
+    RECOMMENDATION_SELECTED,
+    PLANNING_STEP_STARTED,
+    PLANNING_STEP_COMPLETED,
+    PLANNING_FLOW_ABANDONED,
+    FEATURE_USED,
+    FILTER_USED,
+    MEETING_CREATED
+}
+
+enum class PlatformType {
+    KOTLIN,
+    FLUTTER
+}

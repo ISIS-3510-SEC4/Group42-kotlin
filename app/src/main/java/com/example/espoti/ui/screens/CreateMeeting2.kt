@@ -38,6 +38,14 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import java.text.DecimalFormat
 
 @Composable
 fun CreateMeetingScreen2(
@@ -45,9 +53,21 @@ fun CreateMeetingScreen2(
     viewModel: CreateMeetingViewModel = viewModel()
 ) {
     val selectedRestaurant by viewModel.selectedRestaurant
+    val state by viewModel.recommendationState
+
+    // Normally Schedule already started the request.
+    // This also handles re-entering after a cancelled screen instance.
+    LaunchedEffect(viewModel) {
+        viewModel.ensureRecommendations()
+    }
+
+    DisposableEffect(viewModel) {
+        onDispose {
+            viewModel.cancelRecommendations()
+        }
+    }
 
     Scaffold { innerPadding ->
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -56,30 +76,21 @@ fun CreateMeetingScreen2(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
-
             Spacer(modifier = Modifier.height(15.dp))
 
             CreateMeeting2Header()
 
             Spacer(modifier = Modifier.height(15.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "You will meet",
-                    style = MaterialTheme.typography.titleLarge,
-                    color = BrandBrown
-                )
-            }
+            Text(
+                text = "You will meet",
+                style = MaterialTheme.typography.titleLarge,
+                color = BrandBrown
+            )
 
             Spacer(modifier = Modifier.height(22.dp))
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Absolute.Left,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Avatar()
@@ -88,55 +99,108 @@ fun CreateMeetingScreen2(
                 Spacer(modifier = Modifier.width(8.dp))
                 Avatar()
             }
+
             Spacer(modifier = Modifier.height(22.dp))
+
             Text(
                 text = "Our recommendations:",
                 style = MaterialTheme.typography.bodyMedium,
-                color = BrandBrown,
-                modifier = Modifier.align(Alignment.Start)
+                color = BrandBrown
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            RecommendationCard(
-                title = "Restaurante 1",
-                rating = 4,
-                distance = "1 Km away",
-                isSelected = selectedRestaurant == "Restaurante 1",
-                onClick = {
-                    viewModel.onRestaurantSelected("Restaurante 1")
+            when {
+                state.isLoading -> {
+                    CircularProgressIndicator()
                 }
-            )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                state.error != null -> {
+                    Text(
+                        text = state.error.orEmpty(),
+                        color = BrandBrown
+                    )
 
-            RecommendationCard(
-                title = "Restaurante 2",
-                rating = 3,
-                distance = "2 Km away",
-                isSelected = selectedRestaurant == "Restaurante 2",
-                onClick = {
-                    viewModel.onRestaurantSelected("Restaurante 2")
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    EspotiPrimaryButton(
+                        text = "Retry",
+                        onClick = viewModel::retryRecommendations
+                    )
                 }
-            )
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            RecommendationCard(
-                title = "Restaurante 3",
-                rating = 5,
-                distance = "1.5 Km away",
-                isSelected = selectedRestaurant == "Restaurante 3",
-                onClick = {
-                    viewModel.onRestaurantSelected("Restaurante 3")
+                state.recommendations.isEmpty() -> {
+                    Text(
+                        text = "No recommendations found.",
+                        color = BrandBrown
+                    )
                 }
-            )
+
+                else -> {
+                    state.recommendations.forEach { recommendation ->
+                        val requestId = state.requestId
+
+                        // Mutable holder without Compose state updates
+                        // during the drawing pass.
+                        val visible = remember(
+                            requestId,
+                            recommendation.placeId
+                        ) {
+                            booleanArrayOf(false)
+                        }
+
+                        val displayModifier = Modifier
+                            .onGloballyPositioned { coordinates ->
+                                val bounds = coordinates.boundsInWindow()
+
+                                visible[0] =
+                                    bounds.width > 0f &&
+                                            bounds.height > 0f
+                            }
+                            .drawWithContent {
+                                drawContent()
+
+                                if (visible[0] && requestId != null) {
+                                    viewModel.onRecommendationsDisplayed(
+                                        requestId
+                                    )
+                                }
+                            }
+
+                        val distance = recommendation.distanceKm
+                            ?.let { kilometers ->
+                                "${DecimalFormat("0.##").format(kilometers)} Km away"
+                            }
+                            ?: "Distance unavailable"
+
+                        RecommendationCard(
+                            title = recommendation.name,
+                            rating = recommendation.rating,
+                            distance = distance,
+                            isSelected =
+                                selectedRestaurant == recommendation.name,
+                            onClick = {
+                                viewModel.onRestaurantSelected(
+                                    recommendation.name
+                                )
+                            },
+                            modifier = displayModifier
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
 
             EspotiPrimaryButton(
                 text = "Vote",
                 onClick = onVoteClick,
+                enabled =
+                    !state.isLoading &&
+                            state.error == null &&
+                            state.recommendations.isNotEmpty(),
                 modifier = Modifier
                     .width(130.dp)
                     .height(42.dp)
