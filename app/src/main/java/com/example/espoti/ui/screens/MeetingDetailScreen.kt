@@ -27,12 +27,23 @@ import com.example.espoti.model.Meeting
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.SurfacePeach
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.espoti.ui.components.MeetingArrivalStatus
+import com.example.espoti.ui.components.MeetingLocationAccess
+import com.example.espoti.ui.components.distanceLabel
+import com.example.espoti.viewmodel.MeetingDetailViewModel
+import kotlinx.coroutines.launch
 
 @Composable
 fun MeetingDetailScreen(
     meeting: Meeting,
+    viewModel: MeetingDetailViewModel,
     onBackClick: () -> Unit
 ) {
+    val status = viewModel.contexts[meeting.id]
+    val scope = rememberCoroutineScope()
     Scaffold { innerPadding ->
 
         Column(
@@ -40,6 +51,7 @@ fun MeetingDetailScreen(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
         ) {
 
@@ -83,7 +95,9 @@ fun MeetingDetailScreen(
                 )
 
                 Text(
-                    text = meeting.travelTime,
+                    text = status?.let {
+                        "~${it.walkingMinutes} min walking"
+                    } ?: "Location needed",
                     style = MaterialTheme.typography.bodyMedium,
                     color = BrandBrown
                 )
@@ -92,7 +106,7 @@ fun MeetingDetailScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = meeting.distance,
+                text = status?.distanceLabel() ?: "Location needed",
                 style = MaterialTheme.typography.bodyMedium,
                 color = BrandBrown
             )
@@ -116,6 +130,37 @@ fun MeetingDetailScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
+            MeetingLocationAccess(
+                viewModel = viewModel,
+                meetings = listOf(meeting)
+            )
+
+            meeting.startsAtEpochMillis?.let { start ->
+                Text(
+                    text = "Meeting: " +
+                            java.time.Instant.ofEpochMilli(start)
+                                .atZone(java.time.ZoneId.systemDefault())
+                                .format(
+                                    java.time.format.DateTimeFormatter
+                                        .ofPattern("MMM d, HH:mm")
+                                )
+                )
+            }
+
+            MeetingArrivalStatus(
+                status = status,
+                loading = viewModel.loading,
+                onCheckIn = {
+                    scope.launch {
+                        viewModel.refreshContext(
+                            meetings = listOf(meeting),
+                            checkIn = meeting
+                        )
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = "Travel time",
                 style = MaterialTheme.typography.bodyMedium,
@@ -123,7 +168,9 @@ fun MeetingDetailScreen(
             )
 
             Text(
-                text = "10 minutes",
+                text = status?.let {
+                    "~${it.walkingMinutes} minutes walking"
+                } ?: "Not available",
                 style = MaterialTheme.typography.titleMedium,
                 color = BrandBrown
             )

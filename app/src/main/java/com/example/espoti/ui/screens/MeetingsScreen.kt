@@ -36,6 +36,9 @@ import com.example.espoti.viewmodel.MeetingsViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.espoti.ui.components.PreviousMeetingCard
 import com.example.espoti.ui.components.CanceledMeetingCard
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.espoti.ui.components.MeetingLocationAccess
+import kotlinx.coroutines.launch
 
 @Composable
 fun MeetingsScreen(
@@ -44,6 +47,7 @@ fun MeetingsScreen(
     onNotificationsClick: () -> Unit = {},
     viewModel: MeetingsViewModel = viewModel()
 ) {
+    val scope = rememberCoroutineScope()
     val selectedTab by viewModel.selectedTab
     val meetings = viewModel.meetings
     Scaffold { innerPadding ->
@@ -68,13 +72,26 @@ fun MeetingsScreen(
             when (selectedTab) {
 
                 MeetingTab.UPCOMING -> {
+                    MeetingLocationAccess(
+                        viewModel = viewModel,
+                        meetings = meetings
+                    )
+
                     meetings.forEach { meeting ->
-
-
                         UpcomingMeetingCard(
                             meeting = meeting,
                             onDetailClick = onDetailClick,
-                            onTakePhotoClick = {}
+                            onTakePhotoClick = {},
+                            status = viewModel.contexts[meeting.id],
+                            loading = viewModel.loading,
+                            onCheckIn = {
+                                scope.launch {
+                                    viewModel.refreshContext(
+                                        meetings = meetings,
+                                        checkIn = meeting
+                                    )
+                                }
+                            }
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))

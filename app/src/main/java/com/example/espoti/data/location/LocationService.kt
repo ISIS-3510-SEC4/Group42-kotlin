@@ -8,7 +8,7 @@ import android.location.LocationManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
-import android.os.CancellationSignal
+import androidx.core.os.CancellationSignal
 import android.annotation.SuppressLint
 import kotlin.coroutines.resume
 import com.example.espoti.model.LocationFix
