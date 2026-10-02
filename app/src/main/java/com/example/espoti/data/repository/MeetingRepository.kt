@@ -17,15 +17,15 @@ class MeetingRepository {
             id = 1,
             name = "Restaurant Los Andes",
             rating = 4,
-            travelTime = "30 Minutes",
-            distance = "3km from your location"
-        ),
-        Meeting(
-            id = 2,
-            name = "Cafeteria Doña Blanca",
-            rating = 5,
-            travelTime = "20 Minutes",
-            distance = "2km from your location"
+            travelTime = "",
+            distance = "",
+            latitude = 4.6015,
+            longitude = -74.0662,
+            startsAtEpochMillis = java.time.ZonedDateTime.of(
+                2026, 10, 20,
+                14, 0, 0, 0,
+                java.time.ZoneId.of("America/Bogota")
+            ).toInstant().toEpochMilli()
         )
     )
 

@@ -2,14 +2,15 @@ package com.example.espoti.viewmodel
 
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
-import androidx.lifecycle.ViewModel
+import com.example.espoti.data.repository.MeetingContextRepository
 import com.example.espoti.data.repository.MeetingRepository
 import com.example.espoti.model.Meeting
 import com.example.espoti.model.MeetingTab
 
 class MeetingsViewModel(
-    repository: MeetingRepository = MeetingRepository()
-) : ViewModel() {
+    repository: MeetingRepository = MeetingRepository(),
+    contextRepository: MeetingContextRepository? = null
+) : MeetingContextViewModel(contextRepository) {
 
     val meetings: List<Meeting> = repository.getMeetings()
 
