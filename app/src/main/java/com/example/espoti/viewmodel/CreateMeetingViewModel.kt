@@ -6,7 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.espoti.analytics.AnalyticsDependencies
 import com.example.espoti.analytics.AnalyticsTracker
-import com.example.espoti.data.repository.MockRecommendationRepository
+import com.example.espoti.data.repository.FirestoreRecommendationDataSource
 import com.example.espoti.data.repository.RecommendationDataSource
 import com.example.espoti.model.domain.Recommendation
 import kotlinx.coroutines.CancellationException
@@ -27,7 +27,7 @@ data class RecommendationUiState(
 )
 class CreateMeetingViewModel(
     private val recommendationRepository: RecommendationDataSource =
-        MockRecommendationRepository(simulatedDelayMs = 2_000L),
+        FirestoreRecommendationDataSource(),
     private val analyticsTracker: AnalyticsTracker =
         AnalyticsDependencies.tracker
 ) : ViewModel() {
