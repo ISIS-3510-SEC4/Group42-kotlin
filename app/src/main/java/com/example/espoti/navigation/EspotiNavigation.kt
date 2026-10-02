@@ -242,6 +242,8 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 CreateMeetingScreen1(
                     viewModel = createMeetingViewModel,
                     onScheduleClick = {
+                        createMeetingViewModel.requestRecommendations()
+
                         navController.navigate(Screen.CreateMeeting2.route) {
                             launchSingleTop = true
                         }
