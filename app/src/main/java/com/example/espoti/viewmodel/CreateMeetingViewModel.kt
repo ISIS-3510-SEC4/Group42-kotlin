@@ -43,9 +43,15 @@ class CreateMeetingViewModel(
     private val _whatTime = mutableStateOf("")
     val whatTime: State<String> = _whatTime
 
+
     private val _selectedRestaurant = mutableStateOf<String?>(null)
     val selectedRestaurant: State<String?> = _selectedRestaurant
 
+    private val _selectedLatitude = mutableStateOf<Double?>(null)
+    val selectedLatitude: State<Double?> = _selectedLatitude
+
+    private val _selectedLongitude = mutableStateOf<Double?>(null)
+    val selectedLongitude: State<Double?> = _selectedLongitude
     private val _recommendationState =
         mutableStateOf(RecommendationUiState())
 
@@ -105,6 +111,11 @@ class CreateMeetingViewModel(
         )
     }
 
+    fun onLocationSelected(latitude: Double, longitude: Double) {
+        _selectedLatitude.value = latitude
+        _selectedLongitude.value = longitude
+    }
+
     fun requestRecommendations(meetingId: String? = null) {
         if (_recommendationState.value.isLoading) return
 
@@ -119,6 +130,10 @@ class CreateMeetingViewModel(
         val trace = analyticsTracker.recommendationRequested(
             meetingId = meetingId,
             source = recommendationRepository.source
+        )
+        analyticsTracker.featureUsed(
+            feature = "RECOMMENDATIONS",
+            meetingId = meetingId
         )
 
         activeTrace = trace

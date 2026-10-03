@@ -38,6 +38,7 @@ import com.example.espoti.ui.theme.SurfacePeach
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Scaffold
+import com.example.espoti.ui.components.OpenStreetMapView
 
 @Composable
 fun CreateMeetingScreen1(
@@ -47,6 +48,8 @@ fun CreateMeetingScreen1(
     val whatToDo by viewModel.whatToDo
     val whatDay by viewModel.whatDay
     val whatTime by viewModel.whatTime
+    val selectedLatitude by viewModel.selectedLatitude
+    val selectedLongitude by viewModel.selectedLongitude
 
     Scaffold { innerPadding ->
 
@@ -157,21 +160,24 @@ fun CreateMeetingScreen1(
                     .fillMaxWidth()
                     .height(120.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(Color.LightGray),
-                contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Map",
-                    color = BrandBrown,
-                    style = MaterialTheme.typography.bodyMedium
+
+                OpenStreetMapView(
+                    modifier = Modifier.fillMaxSize(),
+                    selectedLatitude = selectedLatitude,
+                    selectedLongitude = selectedLongitude,
+                    onLocationSelected = viewModel::onLocationSelected
                 )
 
-                // Simple location pin placeholder
-                Box(
+                Text(
+                    text = "© OpenStreetMap contributors",
+                    fontSize = 9.sp,
+                    color = Color.DarkGray,
                     modifier = Modifier
-                        .size(18.dp)
-                        .clip(CircleShape)
-                        .background(BrandOrange)
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .background(Color.White.copy(alpha = 0.8f))
+                        .padding(horizontal = 3.dp, vertical = 1.dp)
                 )
             }
 

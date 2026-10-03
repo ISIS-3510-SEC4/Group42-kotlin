@@ -1,17 +1,18 @@
-const {
-  initializeApp,
-  applicationDefault
-} = require("firebase-admin/app");
-
+const { initializeApp, cert } = require("firebase-admin/app");
 const {
   getFirestore,
   FieldValue
 } = require("firebase-admin/firestore");
 
+const serviceAccount = require("./moviles-9132d-firebase-adminsdk-fbsvc-5e8ba5976c.json");
+
 initializeApp({
-  credential: applicationDefault(),
+  credential: cert(serviceAccount),
   projectId: "moviles-9132d"
 });
+
+const db = getFirestore();
+
 
 async function main() {
   const db = getFirestore();
@@ -122,8 +123,8 @@ async function main() {
   };
 
   await db.collection("analytics_results")
-    .doc(resultId)
-    .set(result);
+      .doc(resultId)
+      .set(result);
 
   console.log("Resultado guardado en analytics_results");
   console.log({

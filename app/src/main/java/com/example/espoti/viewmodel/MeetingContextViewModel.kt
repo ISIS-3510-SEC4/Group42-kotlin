@@ -8,6 +8,7 @@ import com.example.espoti.data.repository.MeetingContextRepository
 import com.example.espoti.model.Meeting
 import com.example.espoti.model.MeetingContext
 import kotlinx.coroutines.CancellationException
+import com.example.espoti.analytics.AnalyticsDependencies
 
 open class MeetingContextViewModel(
     private val contextRepository: MeetingContextRepository?
@@ -41,6 +42,10 @@ open class MeetingContextViewModel(
                 repository.refresh(meetings)
             } else {
                 val arrival = repository.checkIn(checkIn)
+                AnalyticsDependencies.tracker.featureUsed(
+                    feature = "CHECK_IN",
+                    meetingId = checkIn.id.toString()
+                )
                 previous + (checkIn.id to arrival)
             }
 
