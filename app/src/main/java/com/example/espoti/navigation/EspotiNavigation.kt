@@ -44,6 +44,10 @@ import com.example.espoti.ui.screens.ProfileScreen
 import com.example.espoti.ui.screens.EditProfileScreen
 import com.example.espoti.ui.components.NotificationsPanel
 import com.example.espoti.viewmodel.NotificationsViewModel
+import androidx.compose.ui.platform.LocalContext
+import com.example.espoti.data.location.AndroidLocationService
+import com.example.espoti.data.repository.MeetingContextRepository
+import com.example.espoti.viewmodel.MeetingsViewModel
 
 // ============================================================================
 // SCREEN ROUTES
@@ -117,6 +121,13 @@ sealed class Screen(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
+    val appContext = LocalContext.current.applicationContext
+    val contextRepository = remember(appContext) {
+        MeetingContextRepository(
+            context = appContext,
+            locationService = AndroidLocationService(appContext)
+        )
+    }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentScreen = Screen.fromRoute(backStackEntry?.destination?.route)
     val selectedTab = currentScreen?.bottomNavItem
@@ -267,30 +278,50 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 )
             }
             composable(Screen.Meetings.route) {
+                val meetingsViewModel: MeetingsViewModel = viewModel(
+                    factory = viewModelFactory {
+                        initializer {
+                            MeetingsViewModel(
+                                contextRepository = contextRepository
+                            )
+                        }
+                    }
+                )
+
                 MeetingsScreen(
+                    viewModel = meetingsViewModel,
                     onDetailClick = { meeting ->
-                        navController.navigate(Screen.MeetingDetail.createRoute(meeting.id))
+                        navController.navigate(
+                            Screen.MeetingDetail.createRoute(meeting.id)
+                        )
                     },
                     hasUnreadNotifications = notifications.isNotEmpty(),
-                    onNotificationsClick = { showNotifications = true }
+                    onNotificationsClick = {
+                        showNotifications = true
+                    }
                 )
             }
             composable(Screen.MeetingDetail.route) {
-                // The ViewModel reads the "meetingId" route argument itself.
-                // Needs an explicit factory: the default one only matches a
-                // ViewModel constructor of exactly (SavedStateHandle), so it
-                // crashed here since this one also has a `repository` param
-                // (even though it has a default value).
                 val detailViewModel: MeetingDetailViewModel = viewModel(
                     factory = viewModelFactory {
-                        initializer { MeetingDetailViewModel(createSavedStateHandle()) }
+                        initializer {
+                            MeetingDetailViewModel(
+                                savedStateHandle = createSavedStateHandle(),
+                                contextRepository = contextRepository
+                            )
+                        }
                     }
                 )
+
                 detailViewModel.meeting?.let { meeting ->
                     MeetingDetailScreen(
                         meeting = meeting,
+                        viewModel = detailViewModel,
                         onBackClick = {
-                            if (navController.currentDestination?.route == Screen.MeetingDetail.route) {
+                            if (
+                                navController.currentDestination?.route ==
+                                Screen.MeetingDetail.route
+                            ) {
                                 navController.popBackStack()
                             }
                         }

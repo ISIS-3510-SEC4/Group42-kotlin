@@ -25,13 +25,17 @@ import com.example.espoti.model.Meeting
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.SurfacePeach
+import com.example.espoti.model.MeetingContext
 
 
 @Composable
 fun UpcomingMeetingCard(
     meeting: Meeting,
     onDetailClick: (Meeting) -> Unit,
-    onTakePhotoClick: () -> Unit
+    onTakePhotoClick: () -> Unit,
+    status: MeetingContext? = null,
+    loading: Boolean = false,
+    onCheckIn: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -41,11 +45,13 @@ fun UpcomingMeetingCard(
             .padding(16.dp)
     ) {
         Text(
-            text = ("📍"+meeting.name),
+            text = "📍${meeting.name}",
             style = MaterialTheme.typography.titleMedium,
             color = BrandBrown
         )
+
         Spacer(modifier = Modifier.height(8.dp))
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -54,18 +60,45 @@ fun UpcomingMeetingCard(
                 text = "⭐".repeat(meeting.rating),
                 color = BrandOrange
             )
+
             Text(
-                text = meeting.travelTime,
+                text = status?.let {
+                    "~${it.walkingMinutes} min walking"
+                } ?: "Location needed",
                 style = MaterialTheme.typography.bodyMedium,
                 color = BrandBrown
             )
         }
+
         Spacer(modifier = Modifier.height(6.dp))
+
         Text(
-            text = meeting.distance,
+            text = status?.distanceLabel() ?: "Location needed",
             style = MaterialTheme.typography.bodyMedium,
             color = BrandBrown
         )
+
+        meeting.startsAtEpochMillis?.let { start ->
+            Text(
+                text = "Meeting: " +
+                        java.time.Instant.ofEpochMilli(start)
+                            .atZone(java.time.ZoneId.systemDefault())
+                            .format(
+                                java.time.format.DateTimeFormatter
+                                    .ofPattern("MMM d, HH:mm")
+                            ),
+                color = BrandBrown
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        MeetingArrivalStatus(
+            status = status,
+            loading = loading,
+            onCheckIn = onCheckIn
+        )
+
         Spacer(modifier = Modifier.height(18.dp))
 
         ParticipantAvatars()
@@ -78,11 +111,12 @@ fun UpcomingMeetingCard(
         ) {
             EspotiPrimaryButton(
                 text = "Detail",
-                onClick = {onDetailClick(meeting)},
+                onClick = { onDetailClick(meeting) },
                 modifier = Modifier
                     .weight(1f)
                     .height(42.dp)
             )
+
             EspotiPrimaryButton(
                 text = "Take a photo",
                 onClick = onTakePhotoClick,
