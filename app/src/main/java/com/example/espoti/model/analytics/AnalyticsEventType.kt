@@ -10,7 +10,8 @@ enum class AnalyticsEventType {
     PLANNING_FLOW_ABANDONED,
     FEATURE_USED,
     FILTER_USED,
-    MEETING_CREATED
+    MEETING_CREATED,
+    PLACE_SELECTED
 }
 
 enum class PlatformType {

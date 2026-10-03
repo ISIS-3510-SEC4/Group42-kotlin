@@ -36,4 +36,10 @@ open class UserRepository(
         users.document(uid).update("preferences", preferences.map { it.name }).await()
         Unit
     }
+
+    /** Mirrors on the backend (Firestore) whether the user enrolled biometric login. */
+    open suspend fun setBiometricEnabled(uid: String, enabled: Boolean): Result<Unit> = runCatching {
+        users.document(uid).update("biometricEnabled", enabled).await()
+        Unit
+    }
 }

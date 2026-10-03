@@ -21,3 +21,7 @@ fun authErrorMessage(error: Throwable): String = when (error) {
     is FirebaseNetworkException -> "No connection. Check your internet and try again."
     else -> "Something went wrong. Please try again."
 }
+
+/** True when Firebase rejected the email/password itself (wrong or changed password, deleted user). */
+fun isWrongCredentials(error: Throwable): Boolean =
+    error is FirebaseAuthInvalidCredentialsException || error is FirebaseAuthInvalidUserException

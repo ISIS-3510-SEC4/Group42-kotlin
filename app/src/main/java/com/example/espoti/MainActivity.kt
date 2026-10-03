@@ -1,9 +1,9 @@
 package com.example.espoti
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.fragment.app.FragmentActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -23,7 +23,8 @@ import com.example.espoti.ui.theme.EspotiTheme
 //   - data/repository/*.kt and model/*.kt to change the data itself
 //   - ui/theme/*.kt to change colors/fonts app-wide
 // ============================================================================
-class MainActivity : ComponentActivity() {
+// FragmentActivity (a ComponentActivity subclass) because BiometricPrompt needs it.
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

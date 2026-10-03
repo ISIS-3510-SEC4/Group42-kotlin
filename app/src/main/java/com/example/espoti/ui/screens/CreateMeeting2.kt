@@ -181,7 +181,7 @@ fun CreateMeetingScreen2(
                                 selectedRestaurant == recommendation.name,
                             onClick = {
                                 viewModel.onRestaurantSelected(
-                                    recommendation.name
+                                    recommendation
                                 )
                             },
                             modifier = displayModifier
@@ -196,7 +196,10 @@ fun CreateMeetingScreen2(
 
             EspotiPrimaryButton(
                 text = "Vote",
-                onClick = onVoteClick,
+                onClick = {
+                    viewModel.onVoteConfirmed()
+                    onVoteClick()
+                },
                 enabled =
                     !state.isLoading &&
                             state.error == null &&

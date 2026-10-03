@@ -197,6 +197,12 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     },
                     onRegisterClick = {
                         navController.navigate(Screen.Register.route) { launchSingleTop = true }
+                    },
+                    onBiometricLoginSuccess = {
+                        notificationsViewModel.refresh()
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Welcome.route) { inclusive = true }
+                        }
                     }
                 )
             }

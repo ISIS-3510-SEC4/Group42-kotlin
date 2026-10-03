@@ -7,5 +7,11 @@ data class Recommendation(
     val category: String,
     val rating: Int,
     val score: Double,
-    val distanceKm: Double?
+    val distanceKm: Double?,
+    // Location of the place; only the Firestore source fills them. Used by the
+    // "most selected meeting areas" analytics.
+    val cityName: String = "",
+    val address: String = "",
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )

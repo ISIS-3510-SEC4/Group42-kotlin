@@ -19,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.example.espoti.ui.components.BiometricLoginButton
 import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.theme.BrandOrange
@@ -36,11 +37,13 @@ import com.example.espoti.ui.theme.TextCream
 //   3. "Where do we meet?" tagline, cream, bold
 //   4. "Login" button (orange pill)  -> goes to Login
 //   5. "Register" button (orange pill) -> goes to Registro
+//   6. "Login with fingerprint" (only if biometrics were set up) -> signs in directly
 // ============================================================================
 @Composable
 fun WelcomeScreen(
     onLoginClick: () -> Unit,
-    onRegisterClick: () -> Unit
+    onRegisterClick: () -> Unit,
+    onBiometricLoginSuccess: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -90,6 +93,13 @@ fun WelcomeScreen(
             onClick = onRegisterClick,
             containerColor = BrandOrange,
             contentColor = TextCream
+        )
+
+        // Only shown when biometric login was set up on this device.
+        BiometricLoginButton(
+            onSuccess = onBiometricLoginSuccess,
+            contentColor = TextCream,
+            modifier = Modifier.padding(top = 12.dp)
         )
 
         Spacer(modifier = Modifier.height(20.dp))

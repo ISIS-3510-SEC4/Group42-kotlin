@@ -8,7 +8,9 @@ import com.example.espoti.analytics.AnalyticsDependencies
 import com.example.espoti.analytics.AnalyticsTracker
 import com.example.espoti.data.repository.FirestoreRecommendationDataSource
 import com.example.espoti.data.repository.RecommendationDataSource
+import com.example.espoti.model.analytics.AnalyticsEventType
 import com.example.espoti.model.domain.Recommendation
+import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -66,8 +68,41 @@ class CreateMeetingViewModel(
         _whatTime.value = value
     }
 
-    fun onRestaurantSelected(name: String) {
-        _selectedRestaurant.value = name
+    private var selectedRecommendation: Recommendation? = null
+
+    fun onRestaurantSelected(recommendation: Recommendation) {
+        selectedRecommendation = recommendation
+        _selectedRestaurant.value = recommendation.name
+    }
+
+    /**
+     * BQ "most selected meeting areas/locations": records the place the user
+     * finally chose (PLACE_SELECTED) with its area, so analytics_results can
+     * rank areas and places. Called once, when the user taps Vote.
+     */
+    fun onVoteConfirmed() {
+        val place = selectedRecommendation ?: return
+        val lat = place.latitude
+        val lng = place.longitude
+        analyticsTracker.trackEvent(
+            type = AnalyticsEventType.PLACE_SELECTED,
+            meetingId = activeMeetingId,
+            placeId = place.placeId,
+            step = "VOTE",
+            metadata = mapOf(
+                "requestId" to _recommendationState.value.requestId,
+                "source" to recommendationRepository.source,
+                "placeName" to place.name,
+                "category" to place.category,
+                "cityName" to place.cityName,
+                "address" to place.address,
+                "latitude" to lat,
+                "longitude" to lng,
+                // ~1.1 km grid cell (2 decimals): the "area" when a city is too coarse.
+                "areaCell" to if (lat != null && lng != null) areaCell(lat, lng) else null,
+                "activity" to _whatToDo.value.ifBlank { null }
+            )
+        )
     }
 
     fun requestRecommendations(meetingId: String? = null) {
@@ -79,6 +114,7 @@ class CreateMeetingViewModel(
         requestJob?.cancel()
 
         _selectedRestaurant.value = null
+        selectedRecommendation = null
 
         val trace = analyticsTracker.recommendationRequested(
             meetingId = meetingId,
@@ -188,3 +224,7 @@ class CreateMeetingViewModel(
         super.onCleared()
     }
 }
+
+/** Rounds coordinates to 2 decimals ("4.65,-74.06"), a ~1.1 km cell used to group nearby places into one area. */
+internal fun areaCell(latitude: Double, longitude: Double): String =
+    String.format(Locale.US, "%.2f,%.2f", latitude, longitude)

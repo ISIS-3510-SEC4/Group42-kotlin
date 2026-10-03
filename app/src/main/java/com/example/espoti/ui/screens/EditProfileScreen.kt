@@ -17,13 +17,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,7 +40,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.espoti.security.BiometricAuthenticator
 import com.example.espoti.ui.components.EspotiField
+import com.example.espoti.ui.components.findFragmentActivity
 import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiNoticeCard
 import com.example.espoti.ui.components.EspotiNotificationsBell
@@ -40,6 +51,7 @@ import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
+import com.example.espoti.viewmodel.BiometricSetupViewModel
 import com.example.espoti.viewmodel.EditProfileViewModel
 
 // ============================================================================
@@ -50,7 +62,8 @@ import com.example.espoti.viewmodel.EditProfileViewModel
 //   2. "Edit Profile:" title
 //   3. Avatar placeholder
 //   4. Username / Email / Preferences / Description fields
-//   5. "Save" button + "Change Password" link
+//   5. Small "Set up biometrics" button (fingerprint login enrollment)
+//   6. "Save" button + "Change Password" link
 // Opened from Profile's "Edit Profile" button (see EspotiNavigation.kt).
 // ============================================================================
 
@@ -59,7 +72,8 @@ fun EditProfileScreen(
     onSaveClick: () -> Unit,
     hasUnreadNotifications: Boolean = false,
     onNotificationsClick: () -> Unit = {},
-    viewModel: EditProfileViewModel = viewModel()
+    viewModel: EditProfileViewModel = viewModel(),
+    biometricViewModel: BiometricSetupViewModel = viewModel()
 ) {
     val username by viewModel.username
     val usernameError by viewModel.usernameError
@@ -69,6 +83,33 @@ fun EditProfileScreen(
     val isSaving by viewModel.isSaving
     val noticeMessage by viewModel.noticeMessage
     val noticeType by viewModel.noticeType
+
+    val context = LocalContext.current
+    val isBiometricEnrolled by biometricViewModel.isEnrolled
+    val showPasswordDialog by biometricViewModel.showPasswordDialog
+    val biometricBusy by biometricViewModel.isBusy
+    val biometricNotice by biometricViewModel.noticeMessage
+    val biometricNoticeType by biometricViewModel.noticeType
+
+    if (showPasswordDialog) {
+        BiometricPasswordDialog(
+            isBusy = biometricBusy,
+            onDismiss = biometricViewModel::onPasswordDialogDismiss,
+            onConfirm = { password ->
+                biometricViewModel.onPasswordConfirmed(password) { cipher ->
+                    val activity = context.findFragmentActivity() ?: return@onPasswordConfirmed
+                    BiometricAuthenticator.authenticate(
+                        activity = activity,
+                        title = "Set up biometric login",
+                        subtitle = "Confirm your fingerprint to enable it",
+                        cipher = cipher,
+                        onSuccess = biometricViewModel::onEnrollAuthenticated,
+                        onError = biometricViewModel::onPromptError
+                    )
+                }
+            }
+        )
+    }
 
     Scaffold { innerPadding ->
         Column(
@@ -160,6 +201,42 @@ fun EditProfileScreen(
 
             EspotiField(label = "Description", value = description, onValueChange = viewModel::onDescriptionChange)
 
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Small button: enrolls (or removes) fingerprint login for this account.
+            AnimatedVisibility(visible = biometricNotice != null) {
+                biometricNotice?.let { message ->
+                    EspotiNoticeCard(
+                        message = message,
+                        onDismiss = biometricViewModel::dismissNotice,
+                        type = biometricNoticeType,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                }
+            }
+            OutlinedButton(
+                onClick = {
+                    if (isBiometricEnrolled) biometricViewModel.onDisableClick()
+                    else biometricViewModel.onSetupClick()
+                },
+                enabled = !biometricBusy,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier.height(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Fingerprint,
+                    contentDescription = null,
+                    tint = BrandOrange,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = if (isBiometricEnrolled) "Disable biometrics" else "Set up biometrics",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = BrandOrange,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(32.dp))
 
             EspotiPrimaryButton(
@@ -187,6 +264,38 @@ fun EditProfileScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+}
+
+/** Asks for the account password before enrolling, so the app can store a verified login. */
+@Composable
+private fun BiometricPasswordDialog(
+    isBusy: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Confirm your password") },
+        text = {
+            Column {
+                Text(
+                    text = "Your fingerprint will unlock this login on this device only.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                EspotiField(label = "Password", value = password, onValueChange = { password = it }, isPassword = true)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(password) }, enabled = !isBusy) {
+                Text(if (isBusy) "Checking..." else "Continue", color = BrandOrange)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel", color = BrandBrown) }
+        }
+    )
 }
 
 @Composable
