@@ -51,6 +51,20 @@ class AnalyticsTracker(
         )
     }
 
+    fun featureUsed(
+        feature: String,
+        meetingId: String? = null,
+        metadata: Map<String, Any?> = emptyMap()
+    ) {
+        trackEvent(
+            type = AnalyticsEventType.FEATURE_USED,
+            meetingId = meetingId,
+            metadata = metadata + mapOf(
+                "feature" to feature
+            )
+        )
+    }
+
     fun recommendationRequested(
         meetingId: String?,
         source: String

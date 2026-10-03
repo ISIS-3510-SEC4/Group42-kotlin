@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.espoti.data.location.AndroidLocationService
 import com.example.espoti.data.repository.MeetingContextRepository
 import com.example.espoti.viewmodel.MeetingsViewModel
+import com.example.espoti.analytics.AnalyticsDependencies
 
 // ============================================================================
 // SCREEN ROUTES
@@ -122,6 +123,7 @@ sealed class Screen(
 @Composable
 fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     val appContext = LocalContext.current.applicationContext
+    val analyticsTracker = AnalyticsDependencies.tracker
     val contextRepository = remember(appContext) {
         MeetingContextRepository(
             context = appContext,
@@ -273,6 +275,7 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     onVoteClick = {
                         // Flow finished: drop both create screens (and whatever
                         // was opened before them) and land on Home.
+                        analyticsTracker.featureUsed("VOTE")
                         navController.popBackStack(Screen.Home.route, inclusive = false)
                     }
                 )
@@ -293,7 +296,10 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     onDetailClick = { meeting ->
                         navController.navigate(
                             Screen.MeetingDetail.createRoute(meeting.id)
-                        )
+                        ); AnalyticsDependencies.tracker.featureUsed(
+                        feature = "UPCOMING_MEETINGS",
+                        meetingId = meeting.id.toString()
+                    )
                     },
                     hasUnreadNotifications = notifications.isNotEmpty(),
                     onNotificationsClick = {

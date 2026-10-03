@@ -13,6 +13,7 @@ import com.example.espoti.model.domain.Friendship
 import com.example.espoti.model.domain.FriendshipStatus
 import com.example.espoti.model.domain.User
 import kotlinx.coroutines.launch
+import com.example.espoti.analytics.AnalyticsDependencies
 
 /**
  * Loads the signed-in user's own code and accepted friends from Firestore
@@ -147,6 +148,9 @@ class FriendsViewModel(
         viewModelScope.launch {
             friendshipRepository.sendRequest(uid, target.id)
                 .onSuccess {
+                    AnalyticsDependencies.tracker.featureUsed(
+                        feature = "FRIENDS"
+                    )
                     showNotice("Friend request sent to ${target.username}.", NoticeType.INFO)
                     _searchQuery.value = ""
                     _foundUser.value = null

@@ -95,6 +95,10 @@ class CreateMeetingViewModel(
             meetingId = meetingId,
             source = recommendationRepository.source
         )
+        analyticsTracker.featureUsed(
+            feature = "RECOMMENDATIONS",
+            meetingId = meetingId
+        )
 
         activeTrace = trace
 
