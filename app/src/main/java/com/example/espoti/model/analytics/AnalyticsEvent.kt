@@ -2,7 +2,7 @@ package com.example.espoti.model.analytics
 
 import java.util.Date
 
-data class AnalyticsEvent(
+open class AnalyticsEvent(
     val id: String,
     val eventType: AnalyticsEventType,
     val userId: String,

@@ -22,6 +22,18 @@ class AnalyticsTracker(
     // Analytics session for this application process.
     private val sessionId = UUID.randomUUID().toString()
 
+    private val recommendationEventFactory =
+        RecommendationEventFactory(sessionId, wallTimeMillis)
+
+    private val planningEventFactory =
+        PlanningEventFactory(sessionId, wallTimeMillis)
+
+    private val featureEventFactory =
+        FeatureEventFactory(sessionId, wallTimeMillis)
+
+    private val meetingEventFactory =
+        MeetingEventFactory(sessionId, wallTimeMillis)
+
     class RecommendationTrace internal constructor(
         val requestId: String,
         internal val requestedEvent: AnalyticsEvent,
@@ -40,7 +52,7 @@ class AnalyticsTracker(
         val userId = currentUserId() ?: return
 
         persist(
-            createEvent(
+            factoryFor(type).createEvent(
                 type = type,
                 userId = userId,
                 meetingId = meetingId,
@@ -73,7 +85,9 @@ class AnalyticsTracker(
         val userId = currentUserId() ?: return null
         val requestId = UUID.randomUUID().toString()
 
-        val event = createEvent(
+        val event = factoryFor(
+            AnalyticsEventType.RECOMMENDATION_REQUESTED
+        ).createEvent(
             type = AnalyticsEventType.RECOMMENDATION_REQUESTED,
             userId = userId,
             meetingId = meetingId,
@@ -112,10 +126,14 @@ class AnalyticsTracker(
             (monotonicNanos() - trace.startedNanos)
                 .coerceAtLeast(0L) / 1_000_000L
 
-        val displayed = trace.requestedEvent.copy(
-            id = UUID.randomUUID().toString(),
-            eventType = AnalyticsEventType.RECOMMENDATION_DISPLAYED,
-            timestamp = Date(wallTimeMillis()),
+        val displayed = factoryFor(
+            AnalyticsEventType.RECOMMENDATION_DISPLAYED
+        ).createEvent(
+            type = AnalyticsEventType.RECOMMENDATION_DISPLAYED,
+            userId = trace.requestedEvent.userId,
+            meetingId = trace.requestedEvent.meetingId,
+            placeId = trace.requestedEvent.placeId,
+            step = trace.requestedEvent.step,
             durationMs = durationMs,
             metadata = trace.requestedEvent.metadata + mapOf(
                 "resultCount" to resultCount,
@@ -130,27 +148,28 @@ class AnalyticsTracker(
         trace?.finished?.set(true)
     }
 
-    private fun createEvent(
-        type: AnalyticsEventType,
-        userId: String,
-        meetingId: String? = null,
-        placeId: String? = null,
-        step: String? = null,
-        metadata: Map<String, Any?> = emptyMap()
-    ): AnalyticsEvent {
-        return AnalyticsEvent(
-            id = UUID.randomUUID().toString(),
-            eventType = type,
-            userId = userId,
-            timestamp = Date(wallTimeMillis()),
-            sessionId = sessionId,
-            meetingId = meetingId,
-            placeId = placeId,
-            step = step,
-            metadata = metadata.toMap()
-        )
-    }
 
+    private fun factoryFor(type: AnalyticsEventType): AnalyticsEventFactory {
+        return when (type) {
+            AnalyticsEventType.RECOMMENDATION_REQUESTED,
+            AnalyticsEventType.RECOMMENDATION_DISPLAYED,
+            AnalyticsEventType.RECOMMENDATION_VIEWED,
+            AnalyticsEventType.RECOMMENDATION_SELECTED ->
+                recommendationEventFactory
+
+            AnalyticsEventType.PLANNING_STEP_STARTED,
+            AnalyticsEventType.PLANNING_STEP_COMPLETED,
+            AnalyticsEventType.PLANNING_FLOW_ABANDONED ->
+                planningEventFactory
+
+            AnalyticsEventType.FEATURE_USED,
+            AnalyticsEventType.FILTER_USED ->
+                featureEventFactory
+
+            AnalyticsEventType.MEETING_CREATED ->
+                meetingEventFactory
+        }
+    }
     private fun persist(event: AnalyticsEvent) {
         scope.launch {
             try {
