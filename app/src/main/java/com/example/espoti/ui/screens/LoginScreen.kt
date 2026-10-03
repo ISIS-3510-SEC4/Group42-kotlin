@@ -28,6 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.espoti.ui.components.BiometricLoginButton
 import com.example.espoti.ui.components.EspotiField
 import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiNoticeCard
@@ -50,6 +51,7 @@ import com.example.espoti.viewmodel.LoginViewModel
 //   3. Email field
 //   4. Password field (with show/hide toggle)
 //   5. "Login" button (brown pill, NOT full width - about 55% wide, centered)
+//      + "Login with fingerprint" below it (only if biometrics were set up)
 //   6. Google/Facebook icon row
 //   7. "Don't have an account? Sign Up" -> goes to Registro
 //   8. "Forgot Password?" link
@@ -130,6 +132,12 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxWidth(0.55f)
                 .height(48.dp)
+        )
+
+        // Only shown when biometric login was set up on this device.
+        BiometricLoginButton(
+            onSuccess = onLoginSuccess,
+            modifier = Modifier.padding(top = 12.dp)
         )
 
         Spacer(modifier = Modifier.height(20.dp))

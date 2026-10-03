@@ -41,7 +41,10 @@ data class User(
     // Diagram's "maxium: ENUM" (Profile screen's "Maximum radio"): stored as a
     // plain km radius instead of an enum, matching the km units the backend's
     // recommendation proximity search already uses.
-    val maxRadiusKm: Int = 10
+    val maxRadiusKm: Int = 10,
+    // True once the user enrolled biometric login on a device (set from Edit Profile).
+    // The secret itself never leaves the device: only this flag is stored.
+    val biometricEnabled: Boolean = false
 )
 
 /** Document friendships/{id}. [userIds] always holds the 2 users (diagram 2..2). */

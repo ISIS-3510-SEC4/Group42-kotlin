@@ -27,7 +27,11 @@ class FirestoreRecommendationDataSource(
                         category = place.category.name,
                         rating = place.rating.stars,
                         score = 0.0,
-                        distanceKm = null
+                        distanceKm = null,
+                        cityName = place.location.cityName,
+                        address = place.location.address,
+                        latitude = place.location.latitude,
+                        longitude = place.location.longitude
                     )
                 }
         }

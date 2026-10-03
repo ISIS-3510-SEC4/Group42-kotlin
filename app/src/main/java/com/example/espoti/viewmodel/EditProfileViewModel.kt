@@ -105,7 +105,9 @@ class EditProfileViewModel(
                 }
             }
 
-            val current = loadedUser ?: User(id = uid)
+            // Re-read so fields changed elsewhere (e.g. biometricEnabled, set by
+            // BiometricSetupViewModel) are not overwritten by this stale copy.
+            val current = userRepository.getUser(uid).getOrNull() ?: loadedUser ?: User(id = uid)
             val updated = current.copy(
                 id = uid,
                 username = username,
