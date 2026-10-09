@@ -10,10 +10,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 
-/** Where the NestJS backend lives. 10.0.2.2 is the host machine as seen from the Android emulator. */
+/**
+ * Where the NestJS backend lives. "localhost" works on a phone or emulator once the
+ * port is forwarded to the PC with:  adb reverse tcp:3000 tcp:3000
+ * (repeat it each time the device is reconnected).
+ */
 object ApiConfig {
     // Debug-only default (plain HTTP). Change to the deployed HTTPS URL for release.
-    const val BASE_URL = "http://10.0.2.2:3000"
+    const val BASE_URL = "http://localhost:3000"
 }
 
 /**
@@ -88,7 +92,11 @@ class RecommendationRepository(
                 category = o.getString("category"),
                 rating = o.getInt("rating"),
                 score = o.getDouble("score"),
-                distanceKm = if (o.isNull("distanceKm")) null else o.getDouble("distanceKm")
+                distanceKm = if (o.isNull("distanceKm")) null else o.getDouble("distanceKm"),
+                cityName = o.optString("cityName", ""),
+                address = o.optString("address", ""),
+                latitude = if (o.isNull("latitude")) null else o.optDouble("latitude"),
+                longitude = if (o.isNull("longitude")) null else o.optDouble("longitude")
             )
         }
     }
