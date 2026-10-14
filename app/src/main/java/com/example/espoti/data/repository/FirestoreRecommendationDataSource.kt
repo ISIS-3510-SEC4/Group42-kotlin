@@ -1,10 +1,17 @@
 package com.example.espoti.data.repository
 
 import com.example.espoti.model.domain.Recommendation
+import com.example.espoti.recommendation.AlphabeticalStrategy
+import com.example.espoti.recommendation.RecommendationContext
+import com.example.espoti.recommendation.RecommendationScoringStrategy
+import com.example.espoti.recommendation.rankedBy
 import kotlinx.coroutines.CancellationException
 
 class FirestoreRecommendationDataSource(
-    private val repository: PlaceRepository = PlaceRepository()
+    private val repository: PlaceRepository = PlaceRepository(),
+    // Strategy: how candidates are scored/ordered. Swap it without touching consumers.
+    private val strategy: RecommendationScoringStrategy = AlphabeticalStrategy,
+    private val contextProvider: () -> RecommendationContext = { RecommendationContext() }
 ) : RecommendationDataSource {
 
     override val source = "FIRESTORE"
@@ -19,7 +26,6 @@ class FirestoreRecommendationDataSource(
 
         return result.map { places ->
             places
-                .sortedWith(compareBy({ it.name }, { it.id }))
                 .map { place ->
                     Recommendation(
                         placeId = place.id,
@@ -34,6 +40,7 @@ class FirestoreRecommendationDataSource(
                         longitude = place.location.longitude
                     )
                 }
+                .rankedBy(strategy, contextProvider())
         }
     }
 }

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.espoti.analytics.AnalyticsDependencies
 import com.example.espoti.analytics.AnalyticsTracker
 import com.example.espoti.data.repository.FirestoreRecommendationDataSource
+import com.example.espoti.data.repository.PineconeRecommendationDataSource
 import com.example.espoti.data.repository.RecommendationDataSource
 import com.example.espoti.model.analytics.AnalyticsEventType
 import com.example.espoti.model.domain.Recommendation
@@ -29,7 +30,7 @@ data class RecommendationUiState(
 )
 class CreateMeetingViewModel(
     private val recommendationRepository: RecommendationDataSource =
-        FirestoreRecommendationDataSource(),
+        PineconeRecommendationDataSource(fallback = FirestoreRecommendationDataSource()),
     private val analyticsTracker: AnalyticsTracker =
         AnalyticsDependencies.tracker
 ) : ViewModel() {
