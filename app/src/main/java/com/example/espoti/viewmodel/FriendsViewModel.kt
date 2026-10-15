@@ -88,7 +88,12 @@ class FriendsViewModel(
                 .distinct()
 
             _friends.value = friendIds.mapNotNull { friendId ->
-                userRepository.getUser(friendId).getOrNull()?.let { Friend(it.username) }
+                userRepository.getUser(friendId).getOrNull()?.let { user ->
+                    Friend(
+                        name = user.username,
+                        userId = friendId
+                    )
+                }
             }
         }
     }

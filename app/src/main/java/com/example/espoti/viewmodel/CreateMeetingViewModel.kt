@@ -16,6 +16,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.time.LocalDate
+import java.time.LocalTime
 /**
  * State of the create-meeting flow. It is shared by CreateMeeting1 and
  * CreateMeeting2 (both get the same instance from navigation), so what the
@@ -38,11 +40,11 @@ class CreateMeetingViewModel(
     private val _whatToDo = mutableStateOf("")
     val whatToDo: State<String> = _whatToDo
 
-    private val _whatDay = mutableStateOf("")
-    val whatDay: State<String> = _whatDay
+    private val _selectedDate = mutableStateOf<LocalDate?>(null)
+    val selectedDate: State<LocalDate?> = _selectedDate
 
-    private val _whatTime = mutableStateOf("")
-    val whatTime: State<String> = _whatTime
+    private val _selectedTime = mutableStateOf<LocalTime?>(null)
+    val selectedTime: State<LocalTime?> = _selectedTime
 
     private val _selectedRestaurant = mutableStateOf<String?>(null)
     val selectedRestaurant: State<String?> = _selectedRestaurant
@@ -66,12 +68,12 @@ class CreateMeetingViewModel(
         _whatToDo.value = value
     }
 
-    fun onWhatDayChange(value: String) {
-        _whatDay.value = value
+    fun onDateSelected(date: LocalDate) {
+        _selectedDate.value = date
     }
 
-    fun onWhatTimeChange(value: String) {
-        _whatTime.value = value
+    fun onTimeSelected(time: LocalTime) {
+        _selectedTime.value = time
     }
 
     private var selectedRecommendation: Recommendation? = null
