@@ -155,6 +155,7 @@ class AnalyticsTracker(
             AnalyticsEventType.RECOMMENDATION_DISPLAYED,
             AnalyticsEventType.RECOMMENDATION_VIEWED,
             AnalyticsEventType.RECOMMENDATION_SELECTED,
+            AnalyticsEventType.RECOMMENDATION_REJECTED,
             AnalyticsEventType.PLACE_SELECTED ->
                 recommendationEventFactory
 
