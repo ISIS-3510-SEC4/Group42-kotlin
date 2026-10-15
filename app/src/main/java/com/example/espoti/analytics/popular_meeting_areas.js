@@ -2,9 +2,17 @@
 // according to users' historical meeting data?"
 //
 // Run (same setup as recommendation_latency.js):  node popular_meeting_areas.js
-// Reads PLACE_SELECTED events (written by CreateMeetingViewModel.onVoteConfirmed)
-// and meetings that already have a placeId, ranks areas (city and ~1 km grid
-// cell) and places, and stores the result in analytics_results.
+//
+// Sources (each meeting is counted once):
+//  1) meetings/{id} with a decided placeId (not CANCELED) - the source of
+//     truth. A meeting is created in VOTING by CreateMeetingViewModel and gets
+//     its placeId when the voting closes (MeetingEventRepository.closeVotingIfDone).
+//  2) PLACE_SELECTED events (one per vote) only when their meeting does not
+//     exist in (1) - i.e. old events recorded before meetings were stored.
+//     Events of existing meetings are skipped: decided ones are already
+//     counted, VOTING ones have no place yet and CANCELED ones never happened.
+// Ranks areas (city and ~1 km grid cell) and places, and stores the result in
+// analytics_results/popular_meeting_areas.
 const {
   initializeApp,
   applicationDefault
@@ -21,6 +29,15 @@ initializeApp({
 });
 
 const TOP_N = 10;
+
+// The area cell is computed ONLY here (the app just sends coordinates), so
+// every source uses the same rounding. 2 decimals ~ 1.1 km.
+// (0, 0) is the Location default for places without coordinates.
+function areaCellOf(latitude, longitude) {
+  if (typeof latitude !== "number" || typeof longitude !== "number") return null;
+  if (latitude === 0 && longitude === 0) return null;
+  return `${latitude.toFixed(2)},${longitude.toFixed(2)}`;
+}
 
 function bump(map, key, init) {
   if (!map.has(key)) map.set(key, { count: 0, users: new Set(), ...init });
@@ -47,56 +64,42 @@ async function main() {
   const places = new Map();
   let totalSelections = 0;
   let ignoredEvents = 0;
+  let duplicateEvents = 0;
 
   const register = ({ placeId, userId, placeName, category, cityName, areaCell, address }) => {
-    if (!placeId) {
-      ignoredEvents++;
-      return;
-    }
     totalSelections++;
     const place = bump(places, placeId, { info: { placeId, placeName, category, cityName, address } });
     place.count++;
-    place.users.add(userId);
+    if (userId) place.users.add(userId);
 
     if (cityName) {
       const city = bump(cities, cityName, { info: { cityName } });
       city.count++;
-      city.users.add(userId);
+      if (userId) city.users.add(userId);
     }
     if (areaCell) {
       const cell = bump(cells, areaCell, { info: { areaCell, cityName } });
       cell.count++;
-      cell.users.add(userId);
+      if (userId) cell.users.add(userId);
     }
   };
 
-  // 1) Selections tracked by the app when a user votes a recommended place.
-  const events = await db.collection("analytics_events")
-    .where("eventType", "==", "PLACE_SELECTED")
-    .get();
-
-  for (const document of events.docs) {
-    const event = document.data();
-    const m = event.metadata || {};
-    register({
-      placeId: event.placeId,
-      userId: event.userId,
-      placeName: m.placeName,
-      category: m.category,
-      cityName: m.cityName,
-      areaCell: m.areaCell,
-      address: m.address
-    });
-  }
-
-  // 2) Historical meetings stored in Firestore with a chosen place.
+  // 1) Historical meetings stored in Firestore with a chosen place.
   const meetings = await db.collection("meetings").get();
   const placeCache = new Map();
+  // Every stored meeting: their PLACE_SELECTED events never count on their own.
+  const knownMeetingIds = new Set(meetings.docs.map(document => document.id));
   let meetingSelections = 0;
+  let votingMeetings = 0;
 
   for (const document of meetings.docs) {
     const meeting = document.data();
-    if (!meeting.placeId || meeting.status === "CANCELED") continue;
+    if (meeting.status === "CANCELED") continue;
+    if (meeting.status === "VOTING") {
+      votingMeetings++;
+      continue;
+    }
+    if (!meeting.placeId) continue;
 
     if (!placeCache.has(meeting.placeId)) {
       const snap = await db.collection("places").doc(meeting.placeId).get();
@@ -106,7 +109,6 @@ async function main() {
     if (!place) continue;
 
     const loc = place.location || {};
-    const hasCoords = typeof loc.latitude === "number" && typeof loc.longitude === "number";
     meetingSelections++;
     register({
       placeId: meeting.placeId,
@@ -114,8 +116,35 @@ async function main() {
       placeName: place.name,
       category: place.category,
       cityName: loc.cityName,
-      areaCell: hasCoords ? `${loc.latitude.toFixed(2)},${loc.longitude.toFixed(2)}` : null,
+      areaCell: areaCellOf(loc.latitude, loc.longitude),
       address: loc.address
+    });
+  }
+
+  // 2) PLACE_SELECTED events whose meeting is not stored (legacy events).
+  const events = await db.collection("analytics_events")
+    .where("eventType", "==", "PLACE_SELECTED")
+    .get();
+
+  for (const document of events.docs) {
+    const event = document.data();
+    if (!event.placeId) {
+      ignoredEvents++;
+      continue;
+    }
+    if (event.meetingId && knownMeetingIds.has(event.meetingId)) {
+      duplicateEvents++;
+      continue;
+    }
+    const m = event.metadata || {};
+    register({
+      placeId: event.placeId,
+      userId: event.userId,
+      placeName: m.placeName,
+      category: m.category,
+      cityName: m.cityName,
+      areaCell: areaCellOf(m.latitude, m.longitude),
+      address: m.address
     });
   }
 
@@ -128,6 +157,9 @@ async function main() {
     metric: "meeting_area_selection_frequency",
     totalSelections,
     selectionsFromMeetings: meetingSelections,
+    selectionsFromEvents: totalSelections - meetingSelections,
+    duplicateEvents,
+    votingMeetings,
     ignoredEvents,
     topCities: clean(rank(cities)),
     topAreas: clean(rank(cells)),

@@ -6,17 +6,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.espoti.data.repository.AuthRepository
 import com.example.espoti.data.repository.FriendshipRepository
+import com.example.espoti.data.repository.MeetingEventRepository
 import com.example.espoti.data.repository.UserRepository
 import com.example.espoti.model.AppNotification
+import com.example.espoti.model.activityLabel
 import com.example.espoti.model.domain.FriendshipStatus
+import com.example.espoti.model.domain.StatusMeeting
+import com.example.espoti.model.domain.VotingRules
 import kotlinx.coroutines.launch
 
 /**
  * Backs the shared notifications panel (see EspotiTopBar / NotificationsPanel
  * in EspotiNavigation.kt) - one instance for the whole app so every screen's
- * bell shows the same list. Only friend invites are loaded for now; meeting
- * invites/vote reminders will be merged into [notifications] the same way
- * once those flows exist.
+ * bell shows the same list: friend requests and meeting invitations.
  *
  * This does one-shot reads, not a live Firestore listener, so [refresh] must
  * be called again whenever the list could be stale (EspotiNavHost does this
@@ -26,7 +28,9 @@ import kotlinx.coroutines.launch
 class NotificationsViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
     private val userRepository: UserRepository = UserRepository(),
-    private val friendshipRepository: FriendshipRepository = FriendshipRepository()
+    private val friendshipRepository: FriendshipRepository = FriendshipRepository(),
+    private val meetingRepository: MeetingEventRepository = MeetingEventRepository(),
+    private val clock: () -> Long = System::currentTimeMillis
 ) : ViewModel() {
 
     private val _notifications = mutableStateOf<List<AppNotification>>(emptyList())
@@ -39,18 +43,55 @@ class NotificationsViewModel(
     fun refresh() {
         val uid = authRepository.currentUserId ?: return
         viewModelScope.launch {
-            friendshipRepository.getFriendships(uid).onSuccess { friendships ->
+            val friendships = friendshipRepository.getFriendships(uid).getOrNull().orEmpty()
+            // Nothing from a user blocked in either direction.
+            val blocked = FriendshipRepository.blockedUserIds(friendships, uid)
+
+            val friendInvites = friendships
                 // sendRequest stores userIds as [fromUid, toUid]: only requests
                 // where I'm the recipient (toUid) belong in MY notifications.
-                val incoming = friendships.filter {
-                    it.status == FriendshipStatus.PENDING && it.userIds.getOrNull(1) == uid
-                }
-                _notifications.value = incoming.mapNotNull { friendship ->
+                .filter { it.status == FriendshipStatus.PENDING && it.userIds.getOrNull(1) == uid }
+                .mapNotNull { friendship ->
                     val fromId = friendship.userIds.getOrNull(0) ?: return@mapNotNull null
                     val fromUser = userRepository.getUser(fromId).getOrNull() ?: return@mapNotNull null
                     AppNotification.FriendInvite(id = friendship.id, fromUserId = fromId, fromName = fromUser.username)
                 }
-            }
+
+            val now = clock()
+            val meetingInvites = meetingRepository.getInvitationsFor(uid).getOrNull().orEmpty()
+                // An invite to a meeting whose voting already ended is useless.
+                .filter { VotingRules.effectiveStatus(it, now) == StatusMeeting.VOTING }
+                .filterNot { it.creatorId in blocked }
+                .map { meeting ->
+                    AppNotification.MeetingInvite(
+                        id = meeting.id,
+                        fromName = userRepository.getUser(meeting.creatorId).getOrNull()?.username ?: "A friend",
+                        title = meeting.activityLabel(),
+                        dateLabel = meeting.date.takeIf { it > 0 }?.let(::formatMeetingDate)
+                    )
+                }
+
+            _notifications.value = meetingInvites + friendInvites
+        }
+    }
+
+    /** Joins the meeting; [onAccepted] gets its id (the panel then opens it to vote). */
+    fun onAcceptMeetingInvite(notification: AppNotification.MeetingInvite, onAccepted: (String) -> Unit) {
+        val uid = authRepository.currentUserId ?: return
+        viewModelScope.launch {
+            meetingRepository.acceptInvitation(notification.id, uid)
+                .onSuccess {
+                    removeNotification(notification.id)
+                    onAccepted(notification.id)
+                }
+        }
+    }
+
+    fun onDeclineMeetingInvite(notification: AppNotification.MeetingInvite) {
+        val uid = authRepository.currentUserId ?: return
+        viewModelScope.launch {
+            meetingRepository.declineInvitation(notification.id, uid)
+                .onSuccess { removeNotification(notification.id) }
         }
     }
 

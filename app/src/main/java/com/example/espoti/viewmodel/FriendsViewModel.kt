@@ -22,12 +22,16 @@ import com.example.espoti.analytics.AnalyticsDependencies
  * user in [foundUser] first, and the request only goes out once the screen
  * calls [onConfirmSendRequest] (see FriendsScreen's confirmation card).
  * Accepting a pending request happens from the notifications panel (see
- * NotificationsViewModel), so only ACCEPTED friendships show up here.
+ * NotificationsViewModel), so only ACCEPTED friendships show up in [friends].
+ * A friend can be removed or blocked; users the signed-in user blocked are
+ * listed in [blockedUsers] so they can be unblocked.
  */
 class FriendsViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
     private val userRepository: UserRepository = UserRepository(),
-    private val friendshipRepository: FriendshipRepository = FriendshipRepository()
+    private val friendshipRepository: FriendshipRepository = FriendshipRepository(),
+    // Lazy so unit tests don't build the Firebase-backed tracker.
+    private val trackFeature: (String) -> Unit = { AnalyticsDependencies.tracker.featureUsed(feature = it) }
 ) : ViewModel() {
 
     private val _myName = mutableStateOf("")
@@ -38,6 +42,9 @@ class FriendsViewModel(
 
     private val _friends = mutableStateOf<List<Friend>>(emptyList())
     val friends: State<List<Friend>> = _friends
+
+    private val _blockedUsers = mutableStateOf<List<Friend>>(emptyList())
+    val blockedUsers: State<List<Friend>> = _blockedUsers
 
     private val _searchQuery = mutableStateOf("")
     val searchQuery: State<String> = _searchQuery
@@ -79,24 +86,18 @@ class FriendsViewModel(
         friendshipRepository.getFriendships(uid).onSuccess { friendships ->
             myFriendships = friendships
 
-            // Two people can end up with more than one friendship doc between
-            // them (e.g. requests sent both ways before this fix) - collapse
-            // those to one entry per friend so the list never repeats a name.
-            val friendIds = friendships
-                .filter { it.status == FriendshipStatus.ACCEPTED }
-                .mapNotNull { friendship -> friendship.userIds.firstOrNull { it != uid } }
-                .distinct()
+            // One entry per ACCEPTED friend, even with duplicate friendship docs.
+            val friendIds = FriendshipRepository.acceptedFriendIds(friendships, uid)
 
-            _friends.value = friendIds.mapNotNull { friendId ->
-                userRepository.getUser(friendId).getOrNull()?.let { user ->
-                    Friend(
-                        name = user.username,
-                        userId = friendId
-                    )
-                }
+            _friends.value = friendIds.mapNotNull { friendId -> friendFor(friendId) }
+            _blockedUsers.value = FriendshipRepository.blockedByMe(friendships, uid).mapNotNull { friendship ->
+                friendship.userIds.firstOrNull { it != uid }?.let { friendFor(it) }
             }
         }
     }
+
+    private suspend fun friendFor(userId: String): Friend? =
+        userRepository.getUser(userId).getOrNull()?.let { Friend(name = it.username, userId = userId) }
 
     /** Any existing friendship (pending, accepted or blocked) with [otherId], regardless of who sent it. */
     private fun relationshipWith(otherId: String): Friendship? =
@@ -153,9 +154,7 @@ class FriendsViewModel(
         viewModelScope.launch {
             friendshipRepository.sendRequest(uid, target.id)
                 .onSuccess {
-                    AnalyticsDependencies.tracker.featureUsed(
-                        feature = "FRIENDS"
-                    )
+                    trackFeature("FRIENDS")
                     showNotice("Friend request sent to ${target.username}.", NoticeType.INFO)
                     _searchQuery.value = ""
                     _foundUser.value = null
@@ -178,8 +177,46 @@ class FriendsViewModel(
         _noticeType.value = type
     }
 
-    // Not wired to a backend yet: sharing the code needs Android's share
-    // sheet and reading contacts needs a real contacts picker + permission.
-    fun onShareCodeClick() {}
-    fun onContactsClick() {}
+    /** Ends the friendship with [friend] (every doc between both users is deleted). */
+    fun onRemoveFriend(friend: Friend) {
+        runFriendAction(
+            action = { uid -> friendshipRepository.removeFriend(uid, friend.userId) },
+            success = "${friend.name} was removed from your friends."
+        )
+    }
+
+    /** Blocks [friend]: no requests or meeting invites between you until you unblock them. */
+    fun onBlock(friend: Friend) {
+        runFriendAction(
+            action = { uid -> friendshipRepository.block(uid, friend.userId) },
+            success = "${friend.name} is blocked."
+        )
+    }
+
+    fun onUnblock(friend: Friend) {
+        val uid = authRepository.currentUserId ?: return
+        val friendship = FriendshipRepository.blockedByMe(myFriendships, uid)
+            .firstOrNull { friend.userId in it.userIds } ?: return
+        runFriendAction(
+            action = { friendshipRepository.unblock(friendship.id) },
+            success = "${friend.name} is unblocked. You can add them again with their code."
+        )
+    }
+
+    /** Runs a friendship change, shows the result and reloads both lists. */
+    private fun runFriendAction(action: suspend (uid: String) -> Result<Unit>, success: String) {
+        val uid = authRepository.currentUserId ?: return
+        viewModelScope.launch {
+            action(uid)
+                .onSuccess { showNotice(success, NoticeType.INFO) }
+                .onFailure { showNotice("Something went wrong. Please try again.", NoticeType.ERROR) }
+            loadFriendships(uid)
+        }
+    }
+
+    // The share sheet itself is opened by the screen (it needs a Context, see
+    // util/ShareCode.kt); here we only record the feature use. "Contacts"
+    // opens the same sheet so the user picks how to reach the contact.
+    fun onShareCodeClick() = trackFeature("SHARE_CODE")
+    fun onContactsClick() = trackFeature("SHARE_CODE_CONTACTS")
 }

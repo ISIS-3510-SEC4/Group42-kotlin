@@ -19,7 +19,7 @@ class MeetingContextRepository(
 
     suspend fun refresh(
         meetings: List<Meeting>
-    ): Map<Int, MeetingContext> {
+    ): Map<String, MeetingContext> {
         val validMeetings = meetings.filter {
             it.latitude != null &&
                     it.longitude != null &&

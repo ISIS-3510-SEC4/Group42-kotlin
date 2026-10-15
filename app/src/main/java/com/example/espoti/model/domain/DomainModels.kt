@@ -47,32 +47,57 @@ data class User(
     val biometricEnabled: Boolean = false
 )
 
-/** Document friendships/{id}. [userIds] always holds the 2 users (diagram 2..2). */
+/**
+ * Document friendships/{id}. [userIds] always holds the 2 users (diagram 2..2).
+ * When [status] is BLOCKED, [blockedBy] is the uid who blocked (only they can
+ * unblock); a block stops requests and invites in both directions.
+ */
 data class Friendship(
     val id: String = "",
     val userIds: List<String> = emptyList(),
     val status: FriendshipStatus = FriendshipStatus.PENDING,
-    val dateAdded: Long = 0L
+    val dateAdded: Long = 0L,
+    val blockedBy: String = ""
 )
 
-/** Document meetings/{id}. Named MeetingEvent to not clash with the UI-level Meeting. */
+/**
+ * Document meetings/{id}. Named MeetingEvent to not clash with the UI-level Meeting.
+ * Lifecycle: created as VOTING with [invitedIds] (friends who haven't answered
+ * yet) and [candidatePlaceIds] (the places everybody votes on). Accepting an
+ * invite moves the uid from [invitedIds] to [participantIds]. When everybody
+ * voted or [votingDeadline] passes, [placeId] gets the winner and the status
+ * becomes UPCOMING (see VotingRules / MeetingEventRepository.closeVotingIfDone).
+ */
 data class MeetingEvent(
     val id: String = "",
     val creatorId: String = "",
     val participantIds: List<String> = emptyList(),
+    val invitedIds: List<String> = emptyList(),
+    val candidatePlaceIds: List<String> = emptyList(),
     val date: Long = 0L,
     val time: String = "",
     val activity: ActivityType = ActivityType.OTHER,
     val status: StatusMeeting = StatusMeeting.UPCOMING,
     val placeId: String? = null,
     val location: Location? = null,
-    val timeEstimated: String = ""
-)
+    val timeEstimated: String = "",
+    val votingDeadline: Long = 0L,
+    val createdAt: Long = 0L,
+    // uid -> voted placeId. Mirrors votes/{uid} so the closing transaction can
+    // read every vote from this single document (transactions can't query).
+    val votes: Map<String, String> = emptyMap()
+) {
+    /** [votes] as Vote objects, the shape VotingRules works with. */
+    fun voteList(): List<Vote> = votes.map { (uid, placeId) ->
+        Vote(id = uid, userId = uid, placeId = placeId, selected = true)
+    }
+}
 
-/** Sub-collection meetings/{id}/votes. */
+/** Sub-collection meetings/{id}/votes, doc id = voter uid (one vote per user). */
 data class Vote(
     val id: String = "",
     val userId: String = "",
+    val placeId: String = "",
     val selected: Boolean = false,
     val timeStamp: Long = 0L
 )
