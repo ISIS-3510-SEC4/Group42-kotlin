@@ -44,4 +44,55 @@ class FirestoreAnalyticsRepository(
             Result.failure(error)
         }
     }
+
+    override suspend fun getGlobalRejectionRates(): Result<Map<String, Double>> {
+        return try {
+            val snapshot = events
+                .whereIn(
+                    "eventType",
+                    listOf("PLACE_SELECTED", "RECOMMENDATION_REJECTED")
+                )
+                .get()
+                .await()
+
+            val selections = mutableMapOf<String, Int>()
+            val rejections = mutableMapOf<String, Int>()
+
+            for (document in snapshot.documents) {
+                val eventType = document.getString("eventType")
+                val placeId = document.getString("placeId")
+                    ?: continue
+
+                when (eventType) {
+                    "PLACE_SELECTED" -> {
+                        selections[placeId] =
+                            (selections[placeId] ?: 0) + 1
+                    }
+
+                    "RECOMMENDATION_REJECTED" -> {
+                        rejections[placeId] =
+                            (rejections[placeId] ?: 0) + 1
+                    }
+                }
+            }
+
+            val placeIds = selections.keys + rejections.keys
+
+            val rates = placeIds.associateWith { placeId ->
+                val selected = selections[placeId] ?: 0
+                val rejected = rejections[placeId] ?: 0
+                val total = selected + rejected
+
+                if (total == 0) 0.0
+                else rejected.toDouble() / total
+            }
+
+            Result.success(rates)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
+    }
+
 }

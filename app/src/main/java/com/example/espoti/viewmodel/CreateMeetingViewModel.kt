@@ -44,7 +44,6 @@ class CreateMeetingViewModel(
     private val _whatTime = mutableStateOf("")
     val whatTime: State<String> = _whatTime
 
-
     private val _selectedRestaurant = mutableStateOf<String?>(null)
     val selectedRestaurant: State<String?> = _selectedRestaurant
 
@@ -76,6 +75,7 @@ class CreateMeetingViewModel(
     }
 
     private var selectedRecommendation: Recommendation? = null
+    private val viewedRecommendationIds = mutableSetOf<String>()
 
     fun onRestaurantSelected(recommendation: Recommendation) {
         selectedRecommendation = recommendation
@@ -87,17 +87,23 @@ class CreateMeetingViewModel(
      * finally chose (PLACE_SELECTED) with its area, so analytics_results can
      * rank areas and places. Called once, when the user taps Vote.
      */
+
     fun onVoteConfirmed() {
         val place = selectedRecommendation ?: return
         val lat = place.latitude
         val lng = place.longitude
+
+        val recommendationState = _recommendationState.value
+        val requestId = recommendationState.requestId
+
+        // Register the place selected by the user.
         analyticsTracker.trackEvent(
             type = AnalyticsEventType.PLACE_SELECTED,
             meetingId = activeMeetingId,
             placeId = place.placeId,
             step = "VOTE",
             metadata = mapOf(
-                "requestId" to _recommendationState.value.requestId,
+                "requestId" to requestId,
                 "source" to recommendationRepository.source,
                 "placeName" to place.name,
                 "category" to place.category,
@@ -105,12 +111,42 @@ class CreateMeetingViewModel(
                 "address" to place.address,
                 "latitude" to lat,
                 "longitude" to lng,
-                // ~1.1 km grid cell (2 decimals): the "area" when a city is too coarse.
-                "areaCell" to if (lat != null && lng != null) areaCell(lat, lng) else null,
+                // ~1.1 km grid cell (2 decimals).
+                "areaCell" to if (lat != null && lng != null) {
+                    areaCell(lat, lng)
+                } else {
+                    null
+                },
                 "activity" to _whatToDo.value.ifBlank { null }
             )
         )
+
+
+        viewedRecommendationIds
+            .filter { rejectedPlaceId -> rejectedPlaceId != place.placeId }
+            .forEach { rejectedPlaceId ->
+                val rejectedPlace = recommendationState.recommendations
+                    .firstOrNull { it.placeId == rejectedPlaceId }
+                    ?: return@forEach
+
+                analyticsTracker.trackEvent(
+                    type = AnalyticsEventType.RECOMMENDATION_REJECTED,
+                    meetingId = activeMeetingId,
+                    placeId = rejectedPlace.placeId,
+                    step = "VOTE",
+                    metadata = mapOf(
+                        "requestId" to requestId,
+                        "source" to recommendationRepository.source,
+                        "placeName" to rejectedPlace.name,
+                        "selectedPlaceId" to place.placeId,
+                        "selectedPlaceName" to place.name,
+                        "category" to rejectedPlace.category,
+                        "cityName" to rejectedPlace.cityName
+                    )
+                )
+            }
     }
+
 
     fun onLocationSelected(latitude: Double, longitude: Double) {
         _selectedLatitude.value = latitude
@@ -127,6 +163,7 @@ class CreateMeetingViewModel(
 
         _selectedRestaurant.value = null
         selectedRecommendation = null
+        viewedRecommendationIds.clear()
 
         val trace = analyticsTracker.recommendationRequested(
             meetingId = meetingId,
@@ -238,6 +275,18 @@ class CreateMeetingViewModel(
     override fun onCleared() {
         analyticsTracker.cancelRecommendation(activeTrace)
         super.onCleared()
+    }
+
+    fun onRecommendationViewed(
+        requestId: String,
+        recommendation: Recommendation
+    ) {
+        val state = _recommendationState.value
+
+        if (state.requestId != requestId) return
+        if (state.isLoading || state.error != null) return
+
+        viewedRecommendationIds.add(recommendation.placeId)
     }
 }
 

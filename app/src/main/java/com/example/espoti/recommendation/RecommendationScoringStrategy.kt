@@ -98,3 +98,26 @@ class WeightedStrategy(
         return parts.sumOf { (strategy, weight) -> strategy.score(candidate, context) * weight } / total
     }
 }
+
+class RejectionAwareStrategy(
+    private val rejectionRates: Map<String, Double>,
+    private val baseStrategy: RecommendationScoringStrategy = RatingStrategy,
+    private val penaltyWeight: Double = 0.5
+) : RecommendationScoringStrategy {
+
+    override val name = "REJECTION_AWARE(${baseStrategy.name})"
+
+    override fun score(
+        candidate: Recommendation,
+        context: RecommendationContext
+    ): Double {
+        val baseScore = baseStrategy.score(candidate, context)
+
+        val rejectionRate = rejectionRates[candidate.placeId]
+            ?.coerceIn(0.0, 1.0)
+            ?: 0.0
+
+        return baseScore - penaltyWeight * rejectionRate
+    }
+}
+

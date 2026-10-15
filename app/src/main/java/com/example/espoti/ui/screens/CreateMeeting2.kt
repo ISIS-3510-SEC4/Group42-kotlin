@@ -67,16 +67,19 @@ fun CreateMeetingScreen2(
         }
     }
 
-    Scaffold { innerPadding ->
+    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(15.dp))
+
+        Spacer(modifier = Modifier.height(15.dp))
 
             CreateMeeting2Header()
 
@@ -163,6 +166,10 @@ fun CreateMeetingScreen2(
                                 if (visible[0] && requestId != null) {
                                     viewModel.onRecommendationsDisplayed(
                                         requestId
+                                    )
+                                    viewModel.onRecommendationViewed(
+                                        requestId = requestId,
+                                        recommendation = recommendation
                                     )
                                 }
                             }
