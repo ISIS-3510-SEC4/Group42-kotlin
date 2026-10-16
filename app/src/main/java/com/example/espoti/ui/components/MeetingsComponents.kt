@@ -1,6 +1,7 @@
 package com.example.espoti.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,10 +36,11 @@ fun UpcomingMeetingCard(
     onTakePhotoClick: () -> Unit,
     status: MeetingContext? = null,
     loading: Boolean = false,
-    onCheckIn: () -> Unit = {}
+    onCheckIn: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
             .background(SurfacePeach)
@@ -80,13 +82,7 @@ fun UpcomingMeetingCard(
 
         meeting.startsAtEpochMillis?.let { start ->
             Text(
-                text = "Meeting: " +
-                        java.time.Instant.ofEpochMilli(start)
-                            .atZone(java.time.ZoneId.systemDefault())
-                            .format(
-                                java.time.format.DateTimeFormatter
-                                    .ofPattern("MMM d, HH:mm")
-                            ),
+                text = "Meeting: ${formatDateTime(start)}",
                 color = BrandBrown
             )
         }
@@ -101,7 +97,7 @@ fun UpcomingMeetingCard(
 
         Spacer(modifier = Modifier.height(18.dp))
 
-        ParticipantAvatars()
+        ParticipantAvatars(count = meeting.participantCount)
 
         Spacer(modifier = Modifier.height(18.dp))
 
@@ -176,7 +172,7 @@ fun PreviousMeetingCard(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                ParticipantAvatars()
+                ParticipantAvatars(count = meeting.participantCount)
             }
 
             Text(
@@ -274,7 +270,7 @@ fun CanceledMeetingCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            ParticipantAvatars()
+            ParticipantAvatars(count = meeting.participantCount)
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -295,12 +291,13 @@ fun CanceledMeetingCard(
     }
 }
 
+/** Up to 3 circles for the participants plus "+N" for the rest. */
 @Composable
-private fun ParticipantAvatars() {
+private fun ParticipantAvatars(count: Int) {
     Row(
         verticalAlignment = Alignment.CenterVertically
     ) {
-        repeat(3) {
+        repeat(count.coerceAtMost(3)) {
             Box(
                 modifier = Modifier
                     .size(34.dp)
@@ -309,10 +306,88 @@ private fun ParticipantAvatars() {
             )
             Spacer(modifier = Modifier.width(6.dp))
         }
+        if (count > 3) {
+            Text(
+                text = "+${count - 3}",
+                color = BrandBrown,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+/**
+ * Upcoming card for a meeting whose place is still being voted: "Voting"
+ * chip under the title, when the voting closes and how many voted. The
+ * button opens the detail, where the user votes (or changes their vote).
+ */
+@Composable
+fun VotingMeetingCard(
+    meeting: Meeting,
+    onVoteClick: (Meeting) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .background(SurfacePeach)
+            .clickable { onVoteClick(meeting) }
+            .padding(16.dp)
+    ) {
         Text(
-            text = "+2",
-            color = BrandBrown,
-            fontWeight = FontWeight.Bold
+            text = meeting.name,
+            style = MaterialTheme.typography.titleMedium,
+            color = BrandBrown
+        )
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        VotingChip()
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        meeting.startsAtEpochMillis?.let { start ->
+            Text(
+                text = "Meeting: ${formatDateTime(start)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = BrandBrown
+            )
+        }
+
+        meeting.votingDeadline?.let { deadline ->
+            Text(
+                text = "Voting closes ${formatDateTime(deadline)}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = BrandBrown
+            )
+        }
+
+        Text(
+            text = "${meeting.voteCount} of ${meeting.participantCount} voted",
+            style = MaterialTheme.typography.bodyMedium,
+            color = BrandBrown
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        ParticipantAvatars(count = meeting.participantCount)
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        EspotiPrimaryButton(
+            text = if (meeting.hasVoted) "Change vote" else "Tap to vote",
+            onClick = { onVoteClick(meeting) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(42.dp),
+            containerColor = if (meeting.hasVoted) BrandBrown else BrandOrange
         )
     }
 }
+
+/** "Oct 20, 14:00" in the device zone. */
+internal fun formatDateTime(millis: Long): String =
+    java.time.Instant.ofEpochMilli(millis)
+        .atZone(java.time.ZoneId.systemDefault())
+        .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm", java.util.Locale.US))

@@ -2,9 +2,8 @@ package com.example.espoti.model
 
 /**
  * One entry in the notifications panel (see NotificationsPanel /
- * NotificationsViewModel). Only [FriendInvite] is wired up for now - meeting
- * invites and vote reminders will be added later as more subclasses here,
- * each rendered as its own card in the panel.
+ * NotificationsViewModel). Each subclass is rendered as its own card in the
+ * panel; vote reminders could be added later the same way.
  */
 sealed class AppNotification {
     abstract val id: String
@@ -14,5 +13,13 @@ sealed class AppNotification {
         override val id: String,
         val fromUserId: String,
         val fromName: String
+    ) : AppNotification()
+
+    /** A meeting (meetings/{id}, id = meeting id) still voting, with the user in invitedIds. */
+    data class MeetingInvite(
+        override val id: String,
+        val fromName: String,
+        val title: String,
+        val dateLabel: String?
     ) : AppNotification()
 }

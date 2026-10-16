@@ -24,7 +24,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -56,7 +58,9 @@ fun NotificationsPanel(
     notifications: List<AppNotification>,
     onDismiss: () -> Unit,
     onAcceptFriendInvite: (AppNotification.FriendInvite) -> Unit,
-    onDeclineFriendInvite: (AppNotification.FriendInvite) -> Unit
+    onDeclineFriendInvite: (AppNotification.FriendInvite) -> Unit,
+    onAcceptMeetingInvite: (AppNotification.MeetingInvite) -> Unit = {},
+    onDeclineMeetingInvite: (AppNotification.MeetingInvite) -> Unit = {}
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
         Box(
@@ -123,6 +127,16 @@ fun NotificationsPanel(
                                         onAccept = { onAcceptFriendInvite(notification) },
                                         onDecline = { onDeclineFriendInvite(notification) }
                                     )
+                                    is AppNotification.MeetingInvite -> InviteCard(
+                                        icon = Icons.Filled.Event,
+                                        message = buildString {
+                                            append("${notification.fromName} invited you to a ${notification.title.lowercase()}")
+                                            notification.dateLabel?.let { append(" on $it") }
+                                            append(". Accept to vote the place.")
+                                        },
+                                        onAccept = { onAcceptMeetingInvite(notification) },
+                                        onDecline = { onDeclineMeetingInvite(notification) }
+                                    )
                                 }
                             }
                         }
@@ -136,6 +150,22 @@ fun NotificationsPanel(
 @Composable
 private fun FriendInviteCard(
     notification: AppNotification.FriendInvite,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit
+) {
+    InviteCard(
+        icon = Icons.Filled.Person,
+        message = "${notification.fromName} wants to be your friend",
+        onAccept = onAccept,
+        onDecline = onDecline
+    )
+}
+
+/** Card with an icon, a message and Accept / Decline, shared by every invite type. */
+@Composable
+private fun InviteCard(
+    icon: ImageVector,
+    message: String,
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
@@ -154,13 +184,13 @@ private fun FriendInviteCard(
                     .background(MaterialTheme.colorScheme.background),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(imageVector = Icons.Filled.Person, contentDescription = null, tint = BrandBrown)
+                Icon(imageVector = icon, contentDescription = null, tint = BrandBrown)
             }
 
             Spacer(modifier = Modifier.width(10.dp))
 
             Text(
-                text = "${notification.fromName} wants to be your friend",
+                text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = BrandBrown,
                 modifier = Modifier.weight(1f)

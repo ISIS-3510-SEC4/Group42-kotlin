@@ -22,6 +22,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.example.espoti.ui.components.BottomNavItem
 import com.example.espoti.ui.components.EspotiBottomNav
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -78,6 +80,9 @@ sealed class Screen(
     // flow (auth, create meeting) or are the root (Welcome, Home) use PREVIOUS.
     val backBehavior: BackBehavior = BackBehavior.GO_HOME
 ) {
+    /** What to pass to navigate() for a plain visit (routes with optional args override it). */
+    open val path: String get() = route
+
     // Root of the app: back leaves the app.
     object Welcome : Screen("welcome", backBehavior = BackBehavior.PREVIOUS)   // Bienvenida
     // Login/Register sit right above Welcome, so "previous" is always Welcome.
@@ -85,12 +90,16 @@ sealed class Screen(
     object Register : Screen("register", backBehavior = BackBehavior.PREVIOUS) // Registro
     // Home is the base of the stack after login: back leaves the app.
     object Home : Screen("home", BottomNavItem.HOME, BackBehavior.PREVIOUS) // Inicio
-    object Meetings : Screen("meetings", BottomNavItem.MEETINGS)
+    // Optional "highlight": meeting just voted, shown outlined in Upcoming.
+    object Meetings : Screen("meetings?highlight={highlight}", BottomNavItem.MEETINGS) {
+        override val path = "meetings"
+        fun createRoute(highlightMeetingId: String): String = "meetings?highlight=$highlightMeetingId"
+    }
     // Create meeting is opened from any screen and returns to wherever it was opened.
     object CreateMeeting1 : Screen("create_meeting1", BottomNavItem.HOME, BackBehavior.PREVIOUS)
     object CreateMeeting2 : Screen("create_meeting2", BottomNavItem.HOME, BackBehavior.PREVIOUS)
     object MeetingDetail : Screen("meeting_detail/{meetingId}", BottomNavItem.MEETINGS) {
-        fun createRoute(meetingId: Int): String {
+        fun createRoute(meetingId: String): String {
             return "meeting_detail/$meetingId"
         }
 
@@ -278,15 +287,23 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 val createMeetingViewModel: CreateMeetingViewModel = viewModel(parentEntry)
                 CreateMeetingScreen2(
                     viewModel = createMeetingViewModel,
-                    onVoteClick = {
-                        // Flow finished: drop both create screens (and whatever
-                        // was opened before them) and land on Home.
-                        analyticsTracker.featureUsed("VOTE")
-                        navController.popBackStack(Screen.Home.route, inclusive = false)
+                    onVoteClick = { meetingId ->
+                        analyticsTracker.featureUsed("VOTE", meetingId = meetingId)
+                        navController.showVotedMeeting(meetingId)
                     }
                 )
             }
-            composable(Screen.Meetings.route) {
+            composable(
+                Screen.Meetings.route,
+                arguments = listOf(
+                    navArgument("highlight") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) { entry ->
+                val highlightMeetingId = entry.arguments?.getString("highlight")
                 val meetingsViewModel: MeetingsViewModel = viewModel(
                     factory = viewModelFactory {
                         initializer {
@@ -299,12 +316,13 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
 
                 MeetingsScreen(
                     viewModel = meetingsViewModel,
+                    highlightMeetingId = highlightMeetingId,
                     onDetailClick = { meeting ->
                         navController.navigate(
                             Screen.MeetingDetail.createRoute(meeting.id)
                         ); AnalyticsDependencies.tracker.featureUsed(
                         feature = "UPCOMING_MEETINGS",
-                        meetingId = meeting.id.toString()
+                        meetingId = meeting.id
                     )
                     },
                     hasUnreadNotifications = notifications.isNotEmpty(),
@@ -325,20 +343,21 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     }
                 )
 
-                detailViewModel.meeting?.let { meeting ->
-                    MeetingDetailScreen(
-                        meeting = meeting,
-                        viewModel = detailViewModel,
-                        onBackClick = {
-                            if (
-                                navController.currentDestination?.route ==
-                                Screen.MeetingDetail.route
-                            ) {
-                                navController.popBackStack()
-                            }
+                MeetingDetailScreen(
+                    viewModel = detailViewModel,
+                    onBackClick = {
+                        if (
+                            navController.currentDestination?.route ==
+                            Screen.MeetingDetail.route
+                        ) {
+                            navController.popBackStack()
                         }
-                    )
-                }
+                    },
+                    onVoted = { meetingId ->
+                        analyticsTracker.featureUsed("VOTE", meetingId = meetingId)
+                        navController.showVotedMeeting(meetingId)
+                    }
+                )
             }
             composable(Screen.Friends.route) {
                 FriendsScreen(
@@ -378,7 +397,15 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
         notifications = notifications,
         onDismiss = { showNotifications = false },
         onAcceptFriendInvite = notificationsViewModel::onAcceptFriendInvite,
-        onDeclineFriendInvite = notificationsViewModel::onDeclineFriendInvite
+        onDeclineFriendInvite = notificationsViewModel::onDeclineFriendInvite,
+        // Accepting a meeting invite opens it right away so the user can vote.
+        onAcceptMeetingInvite = { invite ->
+            notificationsViewModel.onAcceptMeetingInvite(invite) { meetingId ->
+                showNotifications = false
+                navController.navigate(Screen.MeetingDetail.createRoute(meetingId))
+            }
+        },
+        onDeclineMeetingInvite = notificationsViewModel::onDeclineMeetingInvite
     )
     }
 }
@@ -389,8 +416,20 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
  * `launchSingleTop` makes tapping the tab you're already on a no-op.
  */
 private fun NavHostController.navigateToTab(screen: Screen) {
-    navigate(screen.route) {
+    navigate(screen.path) {
         popUpTo(Screen.Home.route) { inclusive = screen == Screen.Home }
+        launchSingleTop = true
+    }
+}
+
+/**
+ * After voting (creator in CreateMeeting2 or a friend in MeetingDetail): drop
+ * the create/detail screens and open Meetings > Upcoming with that meeting
+ * outlined, keeping the usual Home -> tab stack.
+ */
+private fun NavHostController.showVotedMeeting(meetingId: String) {
+    popBackStack(Screen.Home.route, inclusive = false)
+    navigate(Screen.Meetings.createRoute(meetingId)) {
         launchSingleTop = true
     }
 }

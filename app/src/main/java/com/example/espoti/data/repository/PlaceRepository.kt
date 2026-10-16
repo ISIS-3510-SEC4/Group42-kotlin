@@ -5,13 +5,16 @@ import com.example.espoti.model.domain.PlaceCategory
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
-/** Collection places/{id}. */
-class PlaceRepository(
-    db: FirebaseFirestore = FirebaseFirestore.getInstance()
+/**
+ * Collection places/{id}.
+ * `open` + lazy Firestore so ViewModel tests can subclass it without Firebase.
+ */
+open class PlaceRepository(
+    dbProvider: () -> FirebaseFirestore = { FirebaseFirestore.getInstance() }
 ) {
-    private val places = db.collection("places")
+    private val places by lazy { dbProvider().collection("places") }
 
-    suspend fun getPlace(id: String): Result<Place?> = runCatching {
+    open suspend fun getPlace(id: String): Result<Place?> = runCatching {
         places.document(id).get().await().toObject(Place::class.java)?.copy(id = id)
     }
 

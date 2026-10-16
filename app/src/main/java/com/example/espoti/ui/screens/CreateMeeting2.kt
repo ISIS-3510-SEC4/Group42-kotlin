@@ -29,6 +29,9 @@ import androidx.compose.ui.unit.dp
 import com.example.espoti.R
 import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiPrimaryButton
+import com.example.espoti.ui.components.FriendAvatar
+import com.example.espoti.ui.components.RecommendationCard
+import com.example.espoti.ui.components.VoteBar
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.SurfacePeach
 import androidx.compose.runtime.getValue
@@ -49,11 +52,16 @@ import java.text.DecimalFormat
 
 @Composable
 fun CreateMeetingScreen2(
-    onVoteClick: () -> Unit,
+    onVoteClick: (meetingId: String) -> Unit,
     viewModel: CreateMeetingViewModel = viewModel()
 ) {
-    val selectedRestaurant by viewModel.selectedRestaurant
+    val selectedPlaceId by viewModel.selectedPlaceId
+    val friends by viewModel.friends
+    val selectedFriendIds by viewModel.selectedFriendIds
+    val invitedFriends = friends.filter { it.id in selectedFriendIds }
     val state by viewModel.recommendationState
+    val isSavingMeeting by viewModel.isSavingMeeting
+    val saveMeetingError by viewModel.saveMeetingError
 
     // Normally Schedule already started the request.
     // This also handles re-entering after a cancelled screen instance.
@@ -67,8 +75,21 @@ fun CreateMeetingScreen2(
         }
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    val hasRecommendations =
+        !state.isLoading && state.error == null && state.recommendations.isNotEmpty()
 
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            VoteBar(
+                canVote = hasRecommendations && selectedPlaceId != null && !isSavingMeeting,
+                showHint = hasRecommendations && selectedPlaceId == null,
+                errorMessage = saveMeetingError,
+                // Navigates only after the meeting is saved (see onVoteConfirmed).
+                onVote = { viewModel.onVoteConfirmed(onDone = onVoteClick) }
+            )
+        }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -93,14 +114,29 @@ fun CreateMeetingScreen2(
 
             Spacer(modifier = Modifier.height(22.dp))
 
+            // You + the friends invited in CreateMeeting1.
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Avatar()
-                Spacer(modifier = Modifier.width(8.dp))
-                Avatar()
-                Spacer(modifier = Modifier.width(8.dp))
-                Avatar()
+                invitedFriends.forEach { friend -> FriendAvatar(name = friend.username) }
+            }
+
+            if (invitedFriends.isEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Only you: the place is decided with your vote.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Your friends will vote too. The place is decided when everybody votes or the voting closes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             Spacer(modifier = Modifier.height(22.dp))
@@ -183,9 +219,9 @@ fun CreateMeetingScreen2(
                         RecommendationCard(
                             title = recommendation.name,
                             rating = recommendation.rating,
-                            distance = distance,
+                            subtitle = distance,
                             isSelected =
-                                selectedRestaurant == recommendation.name,
+                                selectedPlaceId == recommendation.placeId,
                             onClick = {
                                 viewModel.onRestaurantSelected(
                                     recommendation
@@ -198,29 +234,9 @@ fun CreateMeetingScreen2(
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            EspotiPrimaryButton(
-                text = "Vote",
-                onClick = {
-                    viewModel.onVoteConfirmed()
-                    onVoteClick()
-                },
-                enabled =
-                    !state.isLoading &&
-                            state.error == null &&
-                            state.recommendations.isNotEmpty(),
-                modifier = Modifier
-                    .width(130.dp)
-                    .height(42.dp)
-                    .align(Alignment.CenterHorizontally)
-            )
         }
     }
 }
-
-
 
 @Composable
 private fun Avatar() {
@@ -252,81 +268,5 @@ private fun CreateMeeting2Header() {
             style = MaterialTheme.typography.headlineMedium,
             color=BrandBrown
         )
-    }
-}
-@Composable
-private fun RecommendationCard(
-    title: String,
-    rating: Int,
-    distance: String,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(
-                if (isSelected) {
-                    SurfacePeach
-                } else {
-                    Color.White
-                }
-            )
-            .clickable { onClick() }
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFFFF9800))
-        )
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Bold,
-                color = BrandBrown
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Row {
-                repeat(5) { index ->
-                    Text(
-                        text = if (index < rating) "★" else "☆",
-                        color = BrandBrown,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = distance,
-                style = MaterialTheme.typography.bodyMedium,
-                color = BrandBrown
-            )
-        }
-
-        // Indicador de selección
-        if (isSelected) {
-            Text(
-                text = "✓",
-                color = BrandBrown,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleLarge
-            )
-        }
     }
 }

@@ -1,6 +1,17 @@
 package com.example.espoti.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.example.espoti.util.shareFriendCode
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -81,6 +92,34 @@ fun FriendsScreen(
     val isSendingRequest by viewModel.isSendingRequest
     val noticeMessage by viewModel.noticeMessage
     val noticeType by viewModel.noticeType
+    val blockedUsers by viewModel.blockedUsers
+    val context = LocalContext.current
+    // Friend whose action sheet is open, and the action waiting for confirmation.
+    var selectedFriend by remember { mutableStateOf<Friend?>(null) }
+    var pendingAction by remember { mutableStateOf<FriendAction?>(null) }
+
+    selectedFriend?.let { friend ->
+        FriendActionsSheet(
+            friend = friend,
+            onRemove = { pendingAction = FriendAction.Remove(friend); selectedFriend = null },
+            onBlock = { pendingAction = FriendAction.Block(friend); selectedFriend = null },
+            onDismiss = { selectedFriend = null }
+        )
+    }
+
+    pendingAction?.let { action ->
+        ConfirmFriendActionDialog(
+            action = action,
+            onConfirm = {
+                when (action) {
+                    is FriendAction.Remove -> viewModel.onRemoveFriend(action.friend)
+                    is FriendAction.Block -> viewModel.onBlock(action.friend)
+                }
+                pendingAction = null
+            },
+            onDismiss = { pendingAction = null }
+        )
+    }
 
     Scaffold { innerPadding ->
         Column(
@@ -110,7 +149,10 @@ fun FriendsScreen(
             EspotiCodeDisplay(code = myCode)
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                IconButton(onClick = viewModel::onShareCodeClick) {
+                IconButton(onClick = {
+                    viewModel.onShareCodeClick()
+                    shareFriendCode(context, myCode)
+                }) {
                     Icon(imageVector = Icons.Filled.Share, contentDescription = "Share your code", tint = BrandBrown)
                 }
             }
@@ -182,7 +224,11 @@ fun FriendsScreen(
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                 Button(
-                    onClick = viewModel::onContactsClick,
+                    // Opens the share sheet: the user picks how to reach the contact.
+                    onClick = {
+                        viewModel.onContactsClick()
+                        shareFriendCode(context, myCode)
+                    },
                     shape = RoundedCornerShape(percent = 50),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary,
@@ -205,8 +251,41 @@ fun FriendsScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                friends.forEach { friend -> FriendItem(friend) }
+            if (friends.isEmpty()) {
+                Text(
+                    text = "No friends yet. Share your code or search theirs.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
+                ) {
+                    friends.forEach { friend ->
+                        FriendItem(friend = friend, onClick = { selectedFriend = friend })
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Tap a friend to remove or block them.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (blockedUsers.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(28.dp))
+                Text(
+                    text = "Blocked users:",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = BrandBrown
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                blockedUsers.forEach { user ->
+                    BlockedUserRow(user = user, onUnblock = { viewModel.onUnblock(user) })
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
             }
         }
     }
@@ -289,9 +368,116 @@ private fun FoundUserCard(
     }
 }
 
+/** What the user asked to do with a friend, kept until they confirm it. */
+private sealed class FriendAction(val friend: Friend) {
+    class Remove(friend: Friend) : FriendAction(friend)
+    class Block(friend: Friend) : FriendAction(friend)
+}
+
+/** Opened by tapping a friend: Remove friend / Block. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FriendItem(friend: Friend) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+private fun FriendActionsSheet(
+    friend: Friend,
+    onRemove: () -> Unit,
+    onBlock: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Avatar(size = 56.dp)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = friend.name, style = MaterialTheme.typography.titleMedium, color = BrandBrown)
+            Spacer(modifier = Modifier.height(18.dp))
+            EspotiPrimaryButton(
+                text = "Remove friend",
+                onClick = onRemove,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            EspotiPrimaryButton(
+                text = "Block",
+                onClick = onBlock,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp),
+                containerColor = MaterialTheme.colorScheme.error,
+                contentColor = MaterialTheme.colorScheme.onError
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConfirmFriendActionDialog(
+    action: FriendAction,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val name = action.friend.name
+    val (title, message, confirm) = when (action) {
+        is FriendAction.Remove -> Triple(
+            "Remove $name?",
+            "$name will no longer be your friend. You can add them again with their code.",
+            "Remove"
+        )
+        is FriendAction.Block -> Triple(
+            "Block $name?",
+            "$name will be removed from your friends and neither of you will be able to send requests or meeting invites until you unblock them.",
+            "Block"
+        )
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(message) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(confirm) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun BlockedUserRow(user: Friend, onUnblock: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfacePeach)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Avatar(size = 36.dp)
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = user.name,
+            style = MaterialTheme.typography.bodyLarge,
+            color = BrandBrown,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(onClick = onUnblock) { Text("Unblock", color = BrandBrown) }
+    }
+}
+
+@Composable
+private fun FriendItem(friend: Friend, onClick: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Avatar(size = 56.dp)
         Spacer(modifier = Modifier.height(6.dp))
         Text(

@@ -35,9 +35,175 @@ import com.example.espoti.ui.components.MeetingLocationAccess
 import com.example.espoti.ui.components.distanceLabel
 import com.example.espoti.viewmodel.MeetingDetailViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.runtime.getValue
+import com.example.espoti.ui.components.RecommendationCard
+import com.example.espoti.ui.components.VoteBar
+import com.example.espoti.ui.components.VotingChip
+import com.example.espoti.ui.components.formatDateTime
 
+/**
+ * Detail of one Firestore meeting. While it is VOTING it shows the candidate
+ * places with their votes and a fixed Vote bar ([onVoted] gets the meeting id
+ * once the vote is saved); once decided it shows the place, travel status and
+ * check-in.
+ */
 @Composable
 fun MeetingDetailScreen(
+    viewModel: MeetingDetailViewModel,
+    onBackClick: () -> Unit,
+    onVoted: (meetingId: String) -> Unit
+) {
+    val meeting by viewModel.meeting
+    val isLoading by viewModel.isLoading
+    val error by viewModel.error
+    val current = meeting
+
+    when {
+        current == null && isLoading -> Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(color = BrandBrown)
+        }
+
+        current == null -> Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(20.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(text = error ?: "Meeting not found.", color = BrandBrown)
+            Spacer(modifier = Modifier.height(12.dp))
+            EspotiPrimaryButton(
+                text = "Back",
+                onClick = onBackClick,
+                modifier = Modifier
+                    .width(130.dp)
+                    .height(42.dp)
+            )
+        }
+
+        current.isVoting -> VotingDetail(
+            meeting = current,
+            viewModel = viewModel,
+            onBackClick = onBackClick,
+            onVoted = onVoted
+        )
+
+        else -> ConfirmedDetail(
+            meeting = current,
+            viewModel = viewModel,
+            onBackClick = onBackClick
+        )
+    }
+}
+
+/** VOTING: pick one of the candidate places; Vote stays fixed at the bottom. */
+@Composable
+private fun VotingDetail(
+    meeting: Meeting,
+    viewModel: MeetingDetailViewModel,
+    onBackClick: () -> Unit,
+    onVoted: (String) -> Unit
+) {
+    val candidates by viewModel.candidates
+    val voteCounts by viewModel.voteCounts
+    val selectedPlaceId by viewModel.selectedPlaceId
+    val isSaving by viewModel.isSavingVote
+    val voteError by viewModel.voteError
+
+    Scaffold(
+        bottomBar = {
+            VoteBar(
+                canVote = selectedPlaceId != null && !isSaving,
+                showHint = selectedPlaceId == null && candidates.isNotEmpty(),
+                errorMessage = voteError,
+                onVote = { viewModel.onVoteConfirmed(onDone = onVoted) },
+                buttonText = if (meeting.hasVoted) "Update vote" else "Vote"
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = meeting.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = BrandBrown
+                )
+                Text(
+                    text = "✕",
+                    color = BrandBrown,
+                    modifier = Modifier
+                        .clickable { onBackClick() }
+                        .padding(horizontal = 4.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+            VotingChip()
+            Spacer(modifier = Modifier.height(10.dp))
+
+            meeting.startsAtEpochMillis?.let { start ->
+                Text(text = "Meeting: ${formatDateTime(start)}", color = BrandBrown)
+            }
+            meeting.votingDeadline?.let { deadline ->
+                Text(text = "Voting closes ${formatDateTime(deadline)}", color = BrandBrown)
+            }
+            Text(
+                text = "${meeting.voteCount} of ${meeting.participantCount} voted",
+                color = BrandBrown
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Text(
+                text = "Vote for a place:",
+                style = MaterialTheme.typography.bodyMedium,
+                color = BrandBrown
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (candidates.isEmpty()) {
+                CircularProgressIndicator(color = BrandBrown)
+            }
+
+            candidates.forEach { place ->
+                val votes = voteCounts[place.placeId] ?: 0
+                RecommendationCard(
+                    title = place.name,
+                    rating = place.rating,
+                    subtitle = if (votes == 1) "1 vote" else "$votes votes",
+                    isSelected = selectedPlaceId == place.placeId,
+                    onClick = { viewModel.onPlaceSelected(place.placeId) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+    }
+}
+
+/** Decided meeting: place, travel status and check-in (the original detail). */
+@Composable
+private fun ConfirmedDetail(
     meeting: Meeting,
     viewModel: MeetingDetailViewModel,
     onBackClick: () -> Unit
@@ -130,21 +296,15 @@ fun MeetingDetailScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            MeetingLocationAccess(
-                viewModel = viewModel,
-                meetings = listOf(meeting)
-            )
+            if (meeting.latitude != null && meeting.startsAtEpochMillis != null) {
+                MeetingLocationAccess(
+                    viewModel = viewModel,
+                    meetings = listOf(meeting)
+                )
+            }
 
             meeting.startsAtEpochMillis?.let { start ->
-                Text(
-                    text = "Meeting: " +
-                            java.time.Instant.ofEpochMilli(start)
-                                .atZone(java.time.ZoneId.systemDefault())
-                                .format(
-                                    java.time.format.DateTimeFormatter
-                                        .ofPattern("MMM d, HH:mm")
-                                )
-                )
+                Text(text = "Meeting: ${formatDateTime(start)}")
             }
 
             MeetingArrivalStatus(
@@ -178,7 +338,7 @@ fun MeetingDetailScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = "They are also going:",
+                text = "${meeting.participantCount} going:",
                 style = MaterialTheme.typography.bodyMedium,
                 color = BrandBrown
             )
@@ -189,7 +349,7 @@ fun MeetingDetailScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                repeat(3) {
+                repeat(meeting.participantCount.coerceAtMost(5)) {
                     Box(
                         modifier = Modifier
                             .size(38.dp)

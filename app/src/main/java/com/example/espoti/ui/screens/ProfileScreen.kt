@@ -27,6 +27,8 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import com.example.espoti.util.shareFriendCode
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +75,7 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = viewModel()
 ) {
     val profile by viewModel.profile
+    val context = LocalContext.current
 
     Scaffold { innerPadding ->
         Column(
@@ -135,7 +138,10 @@ fun ProfileScreen(
             EspotiCodeDisplay(code = profile?.code.orEmpty())
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                IconButton(onClick = viewModel::onShareCodeClick) {
+                IconButton(onClick = {
+                    viewModel.onShareCodeClick()
+                    shareFriendCode(context, profile?.code.orEmpty())
+                }) {
                     Icon(imageVector = Icons.Filled.Share, contentDescription = "Share your code", tint = BrandBrown)
                 }
             }

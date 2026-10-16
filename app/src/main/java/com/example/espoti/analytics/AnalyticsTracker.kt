@@ -3,6 +3,7 @@ package com.example.espoti.analytics
 import com.example.espoti.data.repository.AnalyticsRepository
 import com.example.espoti.model.analytics.AnalyticsEvent
 import com.example.espoti.model.analytics.AnalyticsEventType
+import com.example.espoti.model.domain.Recommendation
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -73,6 +74,34 @@ class AnalyticsTracker(
             meetingId = meetingId,
             metadata = metadata + mapOf(
                 "feature" to feature
+            )
+        )
+    }
+
+    /**
+     * BQ "most selected meeting areas/locations": one PLACE_SELECTED per vote,
+     * always tied to its meeting. popular_meeting_areas.js builds the area
+     * cell from the coordinates, so app and script never disagree on it.
+     */
+    fun placeSelected(
+        place: Recommendation,
+        meetingId: String,
+        source: String,
+        metadata: Map<String, Any?> = emptyMap()
+    ) {
+        trackEvent(
+            type = AnalyticsEventType.PLACE_SELECTED,
+            meetingId = meetingId,
+            placeId = place.placeId,
+            step = "VOTE",
+            metadata = metadata + mapOf(
+                "source" to source,
+                "placeName" to place.name,
+                "category" to place.category,
+                "cityName" to place.cityName,
+                "address" to place.address,
+                "latitude" to place.latitude,
+                "longitude" to place.longitude
             )
         )
     }

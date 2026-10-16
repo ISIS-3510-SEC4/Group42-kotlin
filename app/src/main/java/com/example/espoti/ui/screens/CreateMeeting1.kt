@@ -69,6 +69,9 @@ import androidx.compose.runtime.mutableStateListOf
 import com.example.espoti.model.Friend
 import com.example.espoti.viewmodel.FriendsViewModel
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.SelectableDates
+import androidx.compose.material.icons.filled.HowToVote
+import java.time.ZoneId
 
 
 @Composable
@@ -83,12 +86,16 @@ fun CreateMeetingScreen1(
     val selectedLongitude by viewModel.selectedLongitude
     val friendsViewModel: FriendsViewModel = viewModel()
     val friends by friendsViewModel.friends
+    val timeError by viewModel.timeError
+    val selectedFriendIds by viewModel.selectedFriendIds
+    val votingDeadlineMillis by viewModel.votingDeadlineMillis
+    val votingDeadlineError by viewModel.votingDeadlineError
 
     var showFriendsDialog by remember { mutableStateOf(false) }
 
-    val selectedFriends = remember {
-        mutableStateListOf<Friend>()
-    }
+    // The invite list lives in the ViewModel: it is what the meeting is
+    // created with, and it survives going to step 2 and back.
+    val selectedFriends = friends.filter { it.userId in selectedFriendIds }
     Scaffold { innerPadding ->
 
         Column(
@@ -149,6 +156,15 @@ fun CreateMeetingScreen1(
                 )
             }
 
+            if (selectedFriends.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = selectedFriends.joinToString { it.name },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
 
             Spacer(modifier = Modifier.height(18.dp))
 
@@ -187,7 +203,17 @@ fun CreateMeetingScreen1(
 
             MeetingTimePickerField(
                 selectedTime = selectedTime,
+                errorMessage = timeError,
                 onTimeSelected = viewModel::onTimeSelected
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            VotingDeadlineField(
+                deadlineMillis = votingDeadlineMillis,
+                meetingDate = selectedDate,
+                errorMessage = votingDeadlineError,
+                onDeadlineSelected = viewModel::onVotingDeadlineSelected
             )
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -261,15 +287,7 @@ fun CreateMeetingScreen1(
             friends = friends,
             selectedFriends = selectedFriends,
             onFriendToggle = { friend ->
-                val existingIndex = selectedFriends.indexOfFirst {
-                    it.userId == friend.userId
-                }
-
-                if (existingIndex >= 0) {
-                    selectedFriends.removeAt(existingIndex)
-                } else {
-                    selectedFriends.add(friend)
-                }
+                viewModel.toggleFriend(friend.userId)
             },
             onDismiss = {
                 showFriendsDialog = false
@@ -385,7 +403,8 @@ private fun MeetingDatePickerField(
             initialSelectedDateMillis = selectedDate
                 ?.atStartOfDay(ZoneOffset.UTC)
                 ?.toInstant()
-                ?.toEpochMilli()
+                ?.toEpochMilli(),
+            selectableDates = futureDates()
         )
 
         DatePickerDialog(
@@ -421,6 +440,7 @@ private fun MeetingDatePickerField(
 @Composable
 private fun MeetingTimePickerField(
     selectedTime: LocalTime?,
+    errorMessage: String?,
     onTimeSelected: (LocalTime) -> Unit
 ) {
     var showDialog by remember { mutableStateOf(false) }
@@ -454,6 +474,16 @@ private fun MeetingTimePickerField(
                 tint = BrandBrown
             )
         }
+    }
+
+    // The ViewModel rejects a time that already passed on the chosen day.
+    if (errorMessage != null) {
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = errorMessage,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error
+        )
     }
 
     if (showDialog) {
@@ -554,3 +584,144 @@ private fun SelectFriendsDialog(
         }
     )
 }
+
+/** Today's local date expressed as UTC midnight, like the DatePicker's values. */
+private fun todayUtcMillis(): Long =
+    LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+/** Days from today up to [lastUtcMillis] (inclusive) when given. */
+@OptIn(ExperimentalMaterial3Api::class)
+private fun futureDates(lastUtcMillis: Long? = null) = object : SelectableDates {
+    private val today = todayUtcMillis()
+
+    override fun isSelectableDate(utcTimeMillis: Long) =
+        utcTimeMillis >= today && (lastUtcMillis == null || utcTimeMillis <= lastUtcMillis)
+
+    override fun isSelectableYear(year: Int) = year >= LocalDate.now().year
+}
+
+/**
+ * "Voting closes" field (same look as the date/time fields): a DatePicker
+ * (today .. meeting day) followed by a TimePicker. The local day + time
+ * become epoch millis in the device zone; the ViewModel validates them
+ * (future, not after the meeting) and [errorMessage] shows why a choice
+ * was rejected.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VotingDeadlineField(
+    deadlineMillis: Long?,
+    meetingDate: LocalDate?,
+    errorMessage: String?,
+    onDeadlineSelected: (Long) -> Unit
+) {
+    var showDatePicker by remember { mutableStateOf(false) }
+    // Day picked in the first dialog; non-null opens the time dialog.
+    var pickedDay by remember { mutableStateOf<LocalDate?>(null) }
+
+    Text(
+        text = "Voting closes",
+        style = MaterialTheme.typography.bodyMedium,
+        color = BrandBrown
+    )
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(SurfacePeach)
+            .clickable { showDatePicker = true }
+            .padding(horizontal = 16.dp, vertical = 15.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = deadlineMillis?.let(::formatDeadline) ?: "In 24 hours (default)",
+                color = BrandBrown
+            )
+
+            Icon(
+                imageVector = Icons.Default.HowToVote,
+                contentDescription = "Select voting deadline",
+                tint = BrandBrown
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = errorMessage ?: "Your friends can vote until then, or until everybody has voted.",
+        style = MaterialTheme.typography.bodySmall,
+        color = if (errorMessage != null) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    )
+
+    if (showDatePicker) {
+        val dateState = rememberDatePickerState(
+            selectableDates = futureDates(
+                lastUtcMillis = meetingDate
+                    ?.atStartOfDay(ZoneOffset.UTC)
+                    ?.toInstant()
+                    ?.toEpochMilli()
+            )
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pickedDay = dateState.selectedDateMillis?.let { millis ->
+                            Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate()
+                        }
+                        showDatePicker = false
+                    },
+                    enabled = dateState.selectedDateMillis != null
+                ) { Text("Next") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = dateState)
+        }
+    }
+
+    pickedDay?.let { day ->
+        val timePickerState = rememberTimePickerState(
+            initialHour = 20,
+            initialMinute = 0,
+            is24Hour = false
+        )
+        AlertDialog(
+            onDismissRequest = { pickedDay = null },
+            title = { Text("Voting closes at") },
+            text = { TimePicker(state = timePickerState) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val millis = day.atTime(timePickerState.hour, timePickerState.minute)
+                            .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                        onDeadlineSelected(millis)
+                        pickedDay = null
+                    }
+                ) { Text("Confirm") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pickedDay = null }) { Text("Cancel") }
+            }
+        )
+    }
+}
+
+/** "Oct 15, 8:00 PM" in the device zone. */
+private fun formatDeadline(millis: Long): String =
+    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("MMM d, h:mm a", Locale.ENGLISH))

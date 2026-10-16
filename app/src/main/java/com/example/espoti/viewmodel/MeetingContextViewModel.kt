@@ -14,7 +14,7 @@ open class MeetingContextViewModel(
     private val contextRepository: MeetingContextRepository?
 ) : ViewModel() {
 
-    var contexts by mutableStateOf<Map<Int, MeetingContext>>(emptyMap())
+    var contexts by mutableStateOf<Map<String, MeetingContext>>(emptyMap())
         private set
 
     var locationMessage by mutableStateOf(
@@ -44,7 +44,7 @@ open class MeetingContextViewModel(
                 val arrival = repository.checkIn(checkIn)
                 AnalyticsDependencies.tracker.featureUsed(
                     feature = "CHECK_IN",
-                    meetingId = checkIn.id.toString()
+                    meetingId = checkIn.id
                 )
                 previous + (checkIn.id to arrival)
             }
