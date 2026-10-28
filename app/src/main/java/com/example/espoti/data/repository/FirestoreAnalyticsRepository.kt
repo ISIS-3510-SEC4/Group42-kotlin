@@ -83,8 +83,7 @@ class FirestoreAnalyticsRepository(
                 val rejected = rejections[placeId] ?: 0
                 val total = selected + rejected
 
-                if (total == 0) 0.0
-                else rejected.toDouble() / total
+                (rejected + 1.0) / (total + 2.0)
             }
 
             Result.success(rates)
