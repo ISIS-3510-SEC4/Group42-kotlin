@@ -80,12 +80,10 @@ class ProfileViewModel(
     /** The share sheet is opened by the screen (util/ShareCode.kt); this only records the use. */
     fun onShareCodeClick() = AnalyticsDependencies.tracker.featureUsed(feature = "SHARE_CODE")
 
-    // Not wired to a backend yet: these are prototype placeholders, same as
-    // the "Support"/"Attend" buttons elsewhere in the app. Deleting the
-    // account for real also needs a confirmation dialog first.
+    // Not wired to a backend yet: prototype placeholders, same as the
+    // "Support"/"Attend" buttons elsewhere in the app. (Location, Notification
+    // and Delete account are handled by ProfileScreen / DeleteAccountViewModel.)
     fun onPrivacyClick() {}
-    fun onLocationClick() {}
-    fun onNotificationClick() {}
     fun onHelpUsGrowClick() {}
     fun onSupportClick() {}
 }

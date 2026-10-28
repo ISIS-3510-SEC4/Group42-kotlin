@@ -23,6 +23,7 @@ import com.example.espoti.data.repository.UserRepository
 import com.example.espoti.data.sync.NoOpSyncScheduler
 import com.example.espoti.data.sync.SyncScheduler
 import com.example.espoti.data.sync.WorkManagerSyncScheduler
+import com.example.espoti.security.BiometricCredentialStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -117,6 +118,22 @@ object AppContainer {
             profiles.clear(uid)
             friends.clear(uid)
             notifications.clear(uid)
+        }
+    }
+
+    /**
+     * Delete account: like [clearUserData], but also drops the changes still
+     * waiting to sync (the account no longer exists) and the biometric login
+     * saved on this device for [uid].
+     */
+    fun forgetDeletedAccount(uid: String) {
+        clearUserData(uid)
+        val pending = pendingActions
+        appScope.launch {
+            pending.pendingFor(uid).forEach { pending.remove(it.id) }
+        }
+        if (isReady) {
+            BiometricCredentialStore(context).takeIf { it.isEnrolledFor(uid) }?.clear()
         }
     }
 }

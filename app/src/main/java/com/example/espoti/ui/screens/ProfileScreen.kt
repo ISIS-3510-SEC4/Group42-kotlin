@@ -1,5 +1,7 @@
 package com.example.espoti.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,14 +22,36 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
+import androidx.core.app.ActivityCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.espoti.analytics.AnalyticsDependencies
+import com.example.espoti.ui.components.EspotiField
+import com.example.espoti.ui.components.findFragmentActivity
+import com.example.espoti.ui.theme.BrandOrange
+import com.example.espoti.util.DeviceLocationStatus
+import com.example.espoti.util.LOCATION_PERMISSIONS
+import com.example.espoti.util.deviceLocationStatus
+import com.example.espoti.util.openAppSettings
+import com.example.espoti.util.openDeviceLocationSettings
+import com.example.espoti.viewmodel.DeleteAccountViewModel
 import androidx.compose.ui.platform.LocalContext
 import com.example.espoti.util.shareFriendCode
 import androidx.compose.ui.Alignment
@@ -65,24 +89,34 @@ import com.example.espoti.viewmodel.ProfileViewModel
 //   6. Settings list: Privacy, Location, Notification, Help us grow,
 //      Log Out, Delete account
 // Backed by ProfileViewModel (Firestore: users/{uid}).
+//   - Location: asks for the location permission and/or opens the phone's
+//     location settings (util/DeviceLocation.kt); shows whether it is on.
+//   - Notification: opens the notifications side panel (same as the bell).
+//   - Delete account: password confirmation dialog -> DeleteAccountViewModel.
 // ============================================================================
 
 @Composable
 fun ProfileScreen(
     onEditProfileClick: () -> Unit,
     onLogoutClick: () -> Unit,
-    onDeleteAccountClick: () -> Unit,
+    onAccountDeleted: () -> Unit,
     hasUnreadNotifications: Boolean = false,
     onNotificationsClick: () -> Unit = {},
-    viewModel: ProfileViewModel = viewModel()
+    viewModel: ProfileViewModel = viewModel(),
+    deleteAccountViewModel: DeleteAccountViewModel = viewModel()
 ) {
     val profile by viewModel.profile
     val hasPendingSync by viewModel.hasPendingSync
+    val showDeleteDialog by deleteAccountViewModel.showDialog
+    val isDeleting by deleteAccountViewModel.isDeleting
+    val deleteError by deleteAccountViewModel.error
 
     // The ViewModel outlives a trip to Edit profile, so reload every time this
     // screen is shown (picks up edits, including ones saved offline).
     LaunchedEffect(Unit) { viewModel.refresh() }
     val context = LocalContext.current
+    val locationStatus = rememberDeviceLocationStatus()
+    val onLocationClick = rememberLocationAction(locationStatus)
 
     Scaffold { innerPadding ->
         Column(
@@ -181,8 +215,16 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             ProfileMenuItem(text = "Privacy", onClick = viewModel::onPrivacyClick)
-            ProfileMenuItem(text = "Location", onClick = viewModel::onLocationClick)
-            ProfileMenuItem(text = "Notification", onClick = viewModel::onNotificationClick)
+            ProfileMenuItem(
+                text = "Location",
+                detail = when (locationStatus.value) {
+                    DeviceLocationStatus.ON -> "On"
+                    DeviceLocationStatus.TURNED_OFF -> "Off · Tap to turn on"
+                    DeviceLocationStatus.PERMISSION_NEEDED -> "Tap to allow"
+                },
+                onClick = onLocationClick
+            )
+            ProfileMenuItem(text = "Notification", onClick = onNotificationsClick)
             ProfileMenuItem(text = "Help us grow", onClick = viewModel::onHelpUsGrowClick)
             ProfileMenuItem(
                 text = "Log Out",
@@ -191,11 +233,129 @@ fun ProfileScreen(
                     onLogoutClick()
                 }
             )
-            ProfileMenuItem(text = "Delete account", onClick = onDeleteAccountClick)
+            ProfileMenuItem(
+                text = "Delete account",
+                color = MaterialTheme.colorScheme.error,
+                onClick = deleteAccountViewModel::onDeleteClick
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
         }
     }
+
+    if (showDeleteDialog) {
+        DeleteAccountDialog(
+            isDeleting = isDeleting,
+            error = deleteError,
+            onDismiss = deleteAccountViewModel::onDismiss,
+            onConfirm = { password -> deleteAccountViewModel.onConfirm(password, onAccountDeleted) }
+        )
+    }
+}
+
+/**
+ * Current [DeviceLocationStatus], checked again every time the screen comes
+ * back to the front (e.g. after the user changed it in system settings).
+ */
+@Composable
+private fun rememberDeviceLocationStatus(): MutableState<DeviceLocationStatus> {
+    val context = LocalContext.current
+    val status = remember { mutableStateOf(context.deviceLocationStatus()) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) status.value = context.deviceLocationStatus()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    return status
+}
+
+/**
+ * What tapping "Location" does:
+ *   - no permission -> system permission dialog; if it is then granted but the
+ *     phone's location is off, opens the location settings right away. If the
+ *     user denied it for good (Android no longer shows the dialog), opens the
+ *     app's settings so they can allow it there.
+ *   - permission granted -> phone's location settings (to turn it on or off).
+ */
+@Composable
+private fun rememberLocationAction(status: MutableState<DeviceLocationStatus>): () -> Unit {
+    val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        status.value = context.deviceLocationStatus()
+        val activity = context.findFragmentActivity()
+        val deniedForGood = activity != null && LOCATION_PERMISSIONS.none {
+            ActivityCompat.shouldShowRequestPermissionRationale(activity, it)
+        }
+        when {
+            status.value == DeviceLocationStatus.TURNED_OFF -> context.openDeviceLocationSettings()
+            status.value == DeviceLocationStatus.PERMISSION_NEEDED && deniedForGood -> context.openAppSettings()
+        }
+    }
+    return {
+        AnalyticsDependencies.tracker.featureUsed(feature = "LOCATION_SETTINGS")
+        if (status.value == DeviceLocationStatus.PERMISSION_NEEDED) {
+            permissionLauncher.launch(LOCATION_PERMISSIONS)
+        } else {
+            context.openDeviceLocationSettings()
+        }
+    }
+}
+
+/** Last step before deleting: explains what is removed and asks for the password. */
+@Composable
+private fun DeleteAccountDialog(
+    isDeleting: Boolean,
+    error: String?,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var password by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete your account?") },
+        text = {
+            Column {
+                Text(
+                    text = "Your profile and all your friendships (friends, requests and blocks) " +
+                        "will be deleted for good. This can't be undone.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                EspotiField(
+                    label = "Password",
+                    value = password,
+                    onValueChange = { password = it },
+                    isPassword = true
+                )
+                error?.let {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(password) }, enabled = !isDeleting) {
+                Text(
+                    text = if (isDeleting) "Deleting..." else "Delete",
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isDeleting) {
+                Text("Cancel", color = BrandBrown)
+            }
+        }
+    )
 }
 
 private fun formatPreferences(preferences: List<ActivityType>?): String =
@@ -265,23 +425,33 @@ private fun ProfileCoffeeCard(onSupportClick: () -> Unit) {
     }
 }
 
+/** One settings row; [detail] is an optional status on the right (e.g. "On"). */
 @Composable
-private fun ProfileMenuItem(text: String, onClick: () -> Unit) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodyLarge,
-        color = BrandBrown,
+private fun ProfileMenuItem(
+    text: String,
+    onClick: () -> Unit,
+    detail: String? = null,
+    color: Color = BrandBrown
+) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp)
-    )
+            .padding(vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = text, style = MaterialTheme.typography.bodyLarge, color = color)
+        detail?.let {
+            Text(text = it, style = MaterialTheme.typography.bodyMedium, color = BrandOrange)
+        }
+    }
 }
 
 @Preview(showBackground = true)
 @Composable
 private fun ProfileScreenPreview() {
     EspotiTheme {
-        ProfileScreen(onEditProfileClick = {}, onLogoutClick = {}, onDeleteAccountClick = {})
+        ProfileScreen(onEditProfileClick = {}, onLogoutClick = {}, onAccountDeleted = {})
     }
 }

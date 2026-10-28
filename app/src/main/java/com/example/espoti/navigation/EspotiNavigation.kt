@@ -2,7 +2,8 @@ package com.example.espoti.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -162,7 +163,6 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     val notificationsActionError by notificationsViewModel.actionError
     var showNotifications by remember { mutableStateOf(false) }
 
-    // Eventual connectivity: one banner for the whole app while offline.
     val isOnline by AppContainer.connectivity.isOnline.collectAsState()
 
     // Firebase Auth keeps the session on the device, so a user who is already
@@ -192,22 +192,22 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     // declare a `bottomNavItem`, and every tab behaves the same everywhere.
     Scaffold(
         // The screens' own Scaffolds already handle the status-bar inset, so
-        // this one only reserves the space taken by the bottom bar.
+        // this one only reserves the space taken by the offline banner and the
+        // bottom bar.
         contentWindowInsets = WindowInsets(0.dp),
+        // Eventual connectivity: one banner at the top of every screen while offline.
+        topBar = { if (!isOnline) OfflineBanner() },
         bottomBar = {
-            Column {
-                if (!isOnline) OfflineBanner()
-                // Hidden while the keyboard is open so it doesn't float over it.
-                if (selectedTab != null && !keyboardVisible) {
-                    EspotiBottomNav(
-                        selectedItem = selectedTab,
-                        onHomeClick = { navController.navigateToTab(Screen.Home) },
-                        onMeetingsClick = { navController.navigateToTab(Screen.Meetings) },
-                        onFriendsClick = { navController.navigateToTab(Screen.Friends) },
-                        onProfileClick = { navController.navigateToTab(Screen.Profile) },
-                        onAddClick = { navController.navigateToCreateMeeting() }
-                    )
-                }
+            // Hidden while the keyboard is open so it doesn't float over it.
+            if (selectedTab != null && !keyboardVisible) {
+                EspotiBottomNav(
+                    selectedItem = selectedTab,
+                    onHomeClick = { navController.navigateToTab(Screen.Home) },
+                    onMeetingsClick = { navController.navigateToTab(Screen.Meetings) },
+                    onFriendsClick = { navController.navigateToTab(Screen.Friends) },
+                    onProfileClick = { navController.navigateToTab(Screen.Profile) },
+                    onAddClick = { navController.navigateToCreateMeeting() }
+                )
             }
         }
     ) { innerPadding ->
@@ -217,8 +217,14 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
             // Lifts every screen above the keyboard (the window doesn't resize on
             // its own because the app is edge-to-edge). Scrollable screens then
             // keep the focused field in view.
+            // The offline banner already covers the status bar, so its height is
+            // consumed: the screens' own Scaffolds don't add that inset again.
             modifier = Modifier
-                .padding(bottom = innerPadding.calculateBottomPadding())
+                .padding(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = innerPadding.calculateBottomPadding()
+                )
+                .consumeWindowInsets(PaddingValues(top = innerPadding.calculateTopPadding()))
                 .windowInsetsPadding(keyboardInsets)
         ) {
             composable(Screen.Welcome.route) {
@@ -280,7 +286,12 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 HomeScreen(
                     onCreateMeetingClick = { navController.navigateToCreateMeeting() },
                     hasUnreadNotifications = notifications.isNotEmpty(),
-                    onNotificationsClick = { showNotifications = true }
+                    onNotificationsClick = { showNotifications = true },
+                    onMeetingClick = { meetingId ->
+                        AnalyticsDependencies.tracker.featureUsed(feature = "HOME_MEETINGS", meetingId = meetingId)
+                        navController.navigate(Screen.MeetingDetail.createRoute(meetingId))
+                    },
+                    onSeeAllMeetingsClick = { navController.navigateToTab(Screen.Meetings) }
                 )
             }
             composable(Screen.CreateMeeting1.route) { backStackEntry ->
@@ -388,13 +399,13 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
             composable(Screen.Profile.route) {
                 ProfileScreen(
                     onEditProfileClick = { navController.navigate(Screen.EditProfile.route) },
-                    // No backend yet: both just drop the user back to Welcome
-                    // and clear the stack, same placeholder as the old logout.
+                    // Both end the session (ProfileViewModel / DeleteAccountViewModel
+                    // already signed out): back to Welcome with a clean stack.
                     onLogoutClick = {
                         notificationsViewModel.clear()
                         navController.navigate(Screen.Welcome.route) { popUpTo(0) }
                     },
-                    onDeleteAccountClick = {
+                    onAccountDeleted = {
                         notificationsViewModel.clear()
                         navController.navigate(Screen.Welcome.route) { popUpTo(0) }
                     },

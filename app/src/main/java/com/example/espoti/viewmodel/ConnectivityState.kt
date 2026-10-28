@@ -48,6 +48,7 @@ internal object OfflineMessages {
     const val NOTIFICATION_ACTION = "You're offline. Answering invitations needs internet."
     const val USERNAME_CHANGE = "You're offline. Changing your username needs internet " +
         "(we check that it's free). Your other changes can be saved offline."
+    const val DELETE_ACCOUNT = "You're offline. Deleting your account needs internet. Connect and try again."
     const val PROFILE_SAVED_OFFLINE = "Saved on this device. It will sync when you're back online."
 }
 
