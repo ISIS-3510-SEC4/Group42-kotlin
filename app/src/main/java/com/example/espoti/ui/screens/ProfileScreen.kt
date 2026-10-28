@@ -26,6 +26,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import com.example.espoti.util.shareFriendCode
@@ -46,6 +47,7 @@ import com.example.espoti.ui.components.EspotiCodeDisplay
 import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiNotificationsBell
 import com.example.espoti.ui.components.EspotiPrimaryButton
+import com.example.espoti.ui.components.SavedDataCaption
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
@@ -75,6 +77,11 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = viewModel()
 ) {
     val profile by viewModel.profile
+    val hasPendingSync by viewModel.hasPendingSync
+
+    // The ViewModel outlives a trip to Edit profile, so reload every time this
+    // screen is shown (picks up edits, including ones saved offline).
+    LaunchedEffect(Unit) { viewModel.refresh() }
     val context = LocalContext.current
 
     Scaffold { innerPadding ->
@@ -159,6 +166,13 @@ fun ProfileScreen(
                 color = MaterialTheme.colorScheme.onBackground,
                 text = buildAnnotatedStringBold("Maximum radio: ", "${profile?.maxRadiusKm ?: User().maxRadiusKm} km")
             )
+
+            if (hasPendingSync) {
+                SavedDataCaption(
+                    text = "Some changes are saved on this device and will sync when you're back online.",
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.height(20.dp))
 

@@ -2,6 +2,7 @@ package com.example.espoti.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +53,9 @@ import com.example.espoti.data.location.AndroidLocationService
 import com.example.espoti.data.repository.MeetingContextRepository
 import com.example.espoti.viewmodel.MeetingsViewModel
 import com.example.espoti.analytics.AnalyticsDependencies
+import com.example.espoti.data.repository.AuthRepository
+import com.example.espoti.di.AppContainer
+import com.example.espoti.ui.components.OfflineBanner
 
 // ============================================================================
 // SCREEN ROUTES
@@ -153,7 +158,19 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     // list across tab switches.
     val notificationsViewModel: NotificationsViewModel = viewModel()
     val notifications by notificationsViewModel.notifications
+    val notificationsNotice by notificationsViewModel.savedDataNotice
+    val notificationsActionError by notificationsViewModel.actionError
     var showNotifications by remember { mutableStateOf(false) }
+
+    // Eventual connectivity: one banner for the whole app while offline.
+    val isOnline by AppContainer.connectivity.isOnline.collectAsState()
+
+    // Firebase Auth keeps the session on the device, so a user who is already
+    // signed in goes straight to Home - this is what lets the app open (with
+    // the data saved on the device) without internet. Read once per launch.
+    val startDestination = remember {
+        if (AuthRepository().currentUserId != null) Screen.Home.route else Screen.Welcome.route
+    }
 
     // This is a one-shot read (no live listener - see NotificationsViewModel),
     // so re-fetch every time the panel opens instead of relying on the single
@@ -178,22 +195,25 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
         // this one only reserves the space taken by the bottom bar.
         contentWindowInsets = WindowInsets(0.dp),
         bottomBar = {
-            // Hidden while the keyboard is open so it doesn't float over it.
-            if (selectedTab != null && !keyboardVisible) {
-                EspotiBottomNav(
-                    selectedItem = selectedTab,
-                    onHomeClick = { navController.navigateToTab(Screen.Home) },
-                    onMeetingsClick = { navController.navigateToTab(Screen.Meetings) },
-                    onFriendsClick = { navController.navigateToTab(Screen.Friends) },
-                    onProfileClick = { navController.navigateToTab(Screen.Profile) },
-                    onAddClick = { navController.navigateToCreateMeeting() }
-                )
+            Column {
+                if (!isOnline) OfflineBanner()
+                // Hidden while the keyboard is open so it doesn't float over it.
+                if (selectedTab != null && !keyboardVisible) {
+                    EspotiBottomNav(
+                        selectedItem = selectedTab,
+                        onHomeClick = { navController.navigateToTab(Screen.Home) },
+                        onMeetingsClick = { navController.navigateToTab(Screen.Meetings) },
+                        onFriendsClick = { navController.navigateToTab(Screen.Friends) },
+                        onProfileClick = { navController.navigateToTab(Screen.Profile) },
+                        onAddClick = { navController.navigateToCreateMeeting() }
+                    )
+                }
             }
         }
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Welcome.route,
+            startDestination = startDestination,
             // Lifts every screen above the keyboard (the window doesn't resize on
             // its own because the app is edge-to-edge). Scrollable screens then
             // keep the focused field in view.
@@ -395,6 +415,9 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     NotificationsPanel(
         visible = showNotifications,
         notifications = notifications,
+        savedDataNotice = notificationsNotice,
+        actionError = notificationsActionError,
+        actionsEnabled = isOnline,
         onDismiss = { showNotifications = false },
         onAcceptFriendInvite = notificationsViewModel::onAcceptFriendInvite,
         onDeclineFriendInvite = notificationsViewModel::onDeclineFriendInvite,

@@ -61,6 +61,7 @@ import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiNoticeCard
 import com.example.espoti.ui.components.EspotiNotificationsBell
 import com.example.espoti.ui.components.EspotiPrimaryButton
+import com.example.espoti.ui.components.SavedDataCaption
 import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
@@ -93,6 +94,7 @@ fun FriendsScreen(
     val noticeMessage by viewModel.noticeMessage
     val noticeType by viewModel.noticeType
     val blockedUsers by viewModel.blockedUsers
+    val savedDataNotice by viewModel.savedDataNotice
     val context = LocalContext.current
     // Friend whose action sheet is open, and the action waiting for confirmation.
     var selectedFriend by remember { mutableStateOf<Friend?>(null) }
@@ -248,6 +250,11 @@ fun FriendsScreen(
                 style = MaterialTheme.typography.titleMedium,
                 color = BrandBrown
             )
+
+            // Offline (or Firestore failed): the lists below are the saved ones.
+            savedDataNotice?.let {
+                SavedDataCaption(text = it, modifier = Modifier.padding(top = 6.dp))
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
 

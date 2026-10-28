@@ -14,6 +14,8 @@ firebaseBom = "33.7.0"
 coroutines = "1.9.0"
 biometric = "1.1.0"
 fragment = "1.8.5"
+work = "2.10.0"
+collection = "1.5.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -36,6 +38,10 @@ androidx-navigation-compose = { group = "androidx.navigation", name = "navigatio
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 # Explicit: biometric 1.1.0 pulls an old fragment that clashes with activity-compose 1.8.0.
 androidx-fragment = { group = "androidx.fragment", name = "fragment", version.ref = "fragment" }
+
+# Sprint 3: background sync of offline changes (WorkManager) and LruCache that also runs in JVM unit tests.
+androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+androidx-collection = { group = "androidx.collection", name = "collection", version.ref = "collection" }
 
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
