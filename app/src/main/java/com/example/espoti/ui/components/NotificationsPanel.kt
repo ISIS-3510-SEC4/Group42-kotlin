@@ -60,7 +60,11 @@ fun NotificationsPanel(
     onAcceptFriendInvite: (AppNotification.FriendInvite) -> Unit,
     onDeclineFriendInvite: (AppNotification.FriendInvite) -> Unit,
     onAcceptMeetingInvite: (AppNotification.MeetingInvite) -> Unit = {},
-    onDeclineMeetingInvite: (AppNotification.MeetingInvite) -> Unit = {}
+    onDeclineMeetingInvite: (AppNotification.MeetingInvite) -> Unit = {},
+    // Eventual connectivity: says the list is the saved one, and why answering is disabled.
+    savedDataNotice: String? = null,
+    actionError: String? = null,
+    actionsEnabled: Boolean = true
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
         Box(
@@ -112,6 +116,26 @@ fun NotificationsPanel(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    savedDataNotice?.let {
+                        SavedDataCaption(text = it, modifier = Modifier.padding(bottom = 6.dp))
+                    }
+                    if (!actionsEnabled && notifications.isNotEmpty()) {
+                        Text(
+                            text = "Connect to the internet to accept or decline.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
+                    actionError?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
+
                     if (notifications.isEmpty()) {
                         Text(
                             text = "No notifications yet.",
@@ -124,6 +148,7 @@ fun NotificationsPanel(
                                 when (notification) {
                                     is AppNotification.FriendInvite -> FriendInviteCard(
                                         notification = notification,
+                                        enabled = actionsEnabled,
                                         onAccept = { onAcceptFriendInvite(notification) },
                                         onDecline = { onDeclineFriendInvite(notification) }
                                     )
@@ -134,6 +159,7 @@ fun NotificationsPanel(
                                             notification.dateLabel?.let { append(" on $it") }
                                             append(". Accept to vote the place.")
                                         },
+                                        enabled = actionsEnabled,
                                         onAccept = { onAcceptMeetingInvite(notification) },
                                         onDecline = { onDeclineMeetingInvite(notification) }
                                     )
@@ -150,12 +176,14 @@ fun NotificationsPanel(
 @Composable
 private fun FriendInviteCard(
     notification: AppNotification.FriendInvite,
+    enabled: Boolean,
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
     InviteCard(
         icon = Icons.Filled.Person,
         message = "${notification.fromName} wants to be your friend",
+        enabled = enabled,
         onAccept = onAccept,
         onDecline = onDecline
     )
@@ -166,6 +194,7 @@ private fun FriendInviteCard(
 private fun InviteCard(
     icon: ImageVector,
     message: String,
+    enabled: Boolean,
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
@@ -203,6 +232,7 @@ private fun InviteCard(
             EspotiPrimaryButton(
                 text = "Accept",
                 onClick = onAccept,
+                enabled = enabled,
                 modifier = Modifier
                     .weight(1f)
                     .height(38.dp)
@@ -210,6 +240,7 @@ private fun InviteCard(
             EspotiPrimaryButton(
                 text = "Decline",
                 onClick = onDecline,
+                enabled = enabled,
                 modifier = Modifier
                     .weight(1f)
                     .height(38.dp),

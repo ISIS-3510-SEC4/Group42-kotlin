@@ -37,6 +37,23 @@ open class UserRepository(
         Unit
     }
 
+    /**
+     * Sends a profile edit made offline (see SyncWorker). Only the fields that
+     * can be edited offline; setting the same values twice is harmless, so a
+     * retry after a timeout is safe.
+     */
+    open suspend fun updateProfileFields(
+        uid: String,
+        description: String,
+        preferences: List<ActivityType>
+    ): Result<Unit> = runCatching {
+        users.document(uid).update(
+            "description", description,
+            "preferences", preferences.map { it.name }
+        ).await()
+        Unit
+    }
+
     /** Mirrors on the backend (Firestore) whether the user enrolled biometric login. */
     open suspend fun setBiometricEnabled(uid: String, enabled: Boolean): Result<Unit> = runCatching {
         users.document(uid).update("biometricEnabled", enabled).await()

@@ -4,8 +4,10 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.espoti.data.connectivity.ConnectivityObserver
 import com.example.espoti.data.repository.AuthRepository
 import com.example.espoti.data.repository.UserRepository
+import com.example.espoti.di.AppContainer
 import com.example.espoti.model.NoticeType
 import com.example.espoti.model.domain.User
 import com.example.espoti.util.EMAIL_EXTENSIONS_HINT
@@ -20,10 +22,15 @@ import kotlinx.coroutines.launch
 // Owns the Register form state and its validation (same idea as
 // LoginViewModel, with the "confirm" fields). After validation it creates the
 // Firebase Auth account and then the users/{uid} profile document.
+// Eventual connectivity (network only): registering needs the server - offline,
+// Firestore would answer the "is this username taken?" query from its local
+// cache and could wrongly say it's free. So nothing is sent without a network;
+// the form keeps everything typed and a specific message explains why.
 // ============================================================================
 class RegisterViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
-    private val userRepository: UserRepository = UserRepository()
+    private val userRepository: UserRepository = UserRepository(),
+    connectivity: ConnectivityObserver = AppContainer.connectivity
 ) : ViewModel() {
 
     private val _username = mutableStateOf("")
@@ -64,6 +71,10 @@ class RegisterViewModel(
 
     private val _noticeType = mutableStateOf(NoticeType.ERROR)
     val noticeType: State<NoticeType> = _noticeType
+
+    val isOnline: State<Boolean> = trackConnectivity(connectivity) {
+        if (_noticeMessage.value == OfflineMessages.REGISTER) dismissNotice()
+    }
 
     fun onUsernameChange(value: String) {
         _username.value = value
@@ -150,6 +161,11 @@ class RegisterViewModel(
 
         if (error != null) {
             showNotice(error, NoticeType.ERROR)
+            return
+        }
+
+        if (!isOnline.value) {
+            showNotice(OfflineMessages.REGISTER, NoticeType.ERROR)
             return
         }
 

@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.espoti.data.repository.AuthRepository
+import com.example.espoti.di.AppContainer
 import com.example.espoti.security.BiometricAuthenticator
 import com.example.espoti.security.BiometricCredentialStore
 import com.example.espoti.util.authErrorMessage
@@ -21,6 +22,9 @@ import javax.crypto.Cipher
 // and hands the unlocked Cipher back to [onAuthenticated], which decrypts the
 // saved credentials and signs in with Firebase. AndroidViewModel because the
 // store and BiometricManager need a Context.
+// Eventual connectivity (network only): the fingerprint only unlocks the saved
+// password, Firebase still has to check it online. Offline the prompt is not
+// even shown; a specific message says why and clears itself on reconnection.
 // ============================================================================
 class BiometricLoginViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -37,6 +41,12 @@ class BiometricLoginViewModel(application: Application) : AndroidViewModel(appli
     private val _error = mutableStateOf<String?>(null)
     val error: State<String?> = _error
 
+    // Not a constructor parameter: the default AndroidViewModel factory only
+    // passes the Application.
+    private val isOnline: State<Boolean> = trackConnectivity(AppContainer.connectivity) {
+        if (_error.value == OfflineMessages.LOGIN) _error.value = null
+    }
+
     /** Re-evaluates availability (e.g. after returning from Edit Profile or system settings). */
     fun refresh() {
         _isAvailable.value = computeAvailable()
@@ -49,6 +59,10 @@ class BiometricLoginViewModel(application: Application) : AndroidViewModel(appli
     /** Cipher to bind to the prompt, or null (with a message) if the enrollment is no longer usable. */
     fun prepareCipher(): Cipher? {
         if (_isLoading.value) return null
+        if (!isOnline.value) {
+            _error.value = OfflineMessages.LOGIN
+            return null
+        }
         _error.value = null
         val cipher = store.createDecryptCipher()
         if (cipher == null) {

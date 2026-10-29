@@ -4,14 +4,22 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.espoti.data.connectivity.ConnectivityObserver
+import com.example.espoti.data.local.FriendsLocalStore
+import com.example.espoti.data.local.ProfileLocalStore
 import com.example.espoti.data.repository.AuthRepository
 import com.example.espoti.data.repository.FriendshipRepository
 import com.example.espoti.data.repository.UserRepository
+import com.example.espoti.di.AppContainer
 import com.example.espoti.model.Friend
 import com.example.espoti.model.NoticeType
 import com.example.espoti.model.domain.Friendship
 import com.example.espoti.model.domain.FriendshipStatus
 import com.example.espoti.model.domain.User
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import com.example.espoti.analytics.AnalyticsDependencies
 
@@ -25,13 +33,26 @@ import com.example.espoti.analytics.AnalyticsDependencies
  * NotificationsViewModel), so only ACCEPTED friendships show up in [friends].
  * A friend can be removed or blocked; users the signed-in user blocked are
  * listed in [blockedUsers] so they can be unblocked.
+ *
+ * Sprint 3:
+ * - Eventual connectivity, "cache then network": the lists saved in SQLite are
+ *   shown first, then replaced by Firestore's when online (and saved again).
+ *   Offline, [savedDataNotice] says the lists come from this device, and
+ *   search / send / remove / block / unblock are refused with a specific
+ *   message (they need the server). Back online, everything reloads by itself.
+ * - Multithreading: friends' usernames are read in parallel (async/awaitAll).
+ * - Caching: [userRepository] defaults to the app-wide in-memory user cache.
  */
 class FriendsViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
-    private val userRepository: UserRepository = UserRepository(),
+    private val userRepository: UserRepository = AppContainer.userRepository,
     private val friendshipRepository: FriendshipRepository = FriendshipRepository(),
     // Lazy so unit tests don't build the Firebase-backed tracker.
-    private val trackFeature: (String) -> Unit = { AnalyticsDependencies.tracker.featureUsed(feature = it) }
+    private val trackFeature: (String) -> Unit = { AnalyticsDependencies.tracker.featureUsed(feature = it) },
+    private val friendsStore: FriendsLocalStore = AppContainer.friendsStore,
+    private val profileStore: ProfileLocalStore = AppContainer.profileStore,
+    connectivity: ConnectivityObserver = AppContainer.connectivity,
+    private val clock: () -> Long = System::currentTimeMillis
 ) : ViewModel() {
 
     private val _myName = mutableStateOf("")
@@ -64,36 +85,99 @@ class FriendsViewModel(
     private val _noticeType = mutableStateOf(NoticeType.INFO)
     val noticeType: State<NoticeType> = _noticeType
 
+    // Null when the lists are fresh from Firestore; otherwise explains that
+    // they are the ones saved on this device (and when they were saved).
+    private val _savedDataNotice = mutableStateOf<String?>(null)
+    val savedDataNotice: State<String?> = _savedDataNotice
+
     // Raw friendships with the signed-in user (any status), kept around only
     // to check for an existing relationship before sending a new request -
     // not shown directly (see [friends] for the ACCEPTED/de-duplicated list).
     private var myFriendships: List<Friendship> = emptyList()
 
+    private var loadJob: Job? = null
+
+    // When the lists on screen were last saved on this device.
+    private var savedAt: Long? = null
+
+    val isOnline: State<Boolean> = trackConnectivity(
+        connectivity,
+        onDisconnected = { markSavedData("You're offline.") },
+        onReconnected = { reload() }
+    )
+
     init {
-        val uid = authRepository.currentUserId
-        if (uid != null) {
-            viewModelScope.launch {
-                userRepository.getUser(uid).onSuccess { user ->
-                    _myName.value = user?.username.orEmpty()
-                    _myCode.value = user?.code.orEmpty()
+        reload()
+    }
+
+    /** Saved lists first, then Firestore if online. */
+    private fun reload() {
+        val uid = authRepository.currentUserId ?: return
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
+            showSaved(uid)
+            if (!isOnline.value) return@launch
+
+            // My own profile and my friendships don't depend on each other:
+            // both requests are in flight at the same time.
+            coroutineScope {
+                val me = async { userRepository.getUser(uid) }
+                val loaded = async { loadFriendships(uid) }
+                me.await().onSuccess { user ->
+                    if (user != null) {
+                        _myName.value = user.username
+                        _myCode.value = user.code
+                        profileStore.save(user)
+                    }
                 }
-                loadFriendships(uid)
+                if (!loaded.await()) markSavedData("Couldn't refresh your friends.")
             }
         }
     }
 
-    private suspend fun loadFriendships(uid: String) {
-        friendshipRepository.getFriendships(uid).onSuccess { friendships ->
-            myFriendships = friendships
-
-            // One entry per ACCEPTED friend, even with duplicate friendship docs.
-            val friendIds = FriendshipRepository.acceptedFriendIds(friendships, uid)
-
-            _friends.value = friendIds.mapNotNull { friendId -> friendFor(friendId) }
-            _blockedUsers.value = FriendshipRepository.blockedByMe(friendships, uid).mapNotNull { friendship ->
-                friendship.userIds.firstOrNull { it != uid }?.let { friendFor(it) }
-            }
+    /** Cache step of "cache then network": whatever this device saved last time. */
+    private suspend fun showSaved(uid: String) {
+        profileStore.get(uid)?.let { me ->
+            if (_myName.value.isEmpty()) _myName.value = me.username
+            if (_myCode.value.isEmpty()) _myCode.value = me.code
         }
+        val saved = friendsStore.get(uid)
+        if (saved != null && _friends.value.isEmpty() && _blockedUsers.value.isEmpty()) {
+            _friends.value = saved.friends
+            _blockedUsers.value = saved.blocked
+            savedAt = saved.savedAt
+        }
+        if (!isOnline.value) markSavedData("You're offline.")
+    }
+
+    private fun markSavedData(reason: String) {
+        val time = savedAt?.let { " (saved at ${timeLabel(it)})" }.orEmpty()
+        _savedDataNotice.value = "$reason Showing the friends saved on this device$time."
+    }
+
+    /** Network step: reads Firestore, shows the result and saves it. False if Firestore failed. */
+    private suspend fun loadFriendships(uid: String): Boolean {
+        val friendships = friendshipRepository.getFriendships(uid).getOrElse { return false }
+        myFriendships = friendships
+
+        // One entry per ACCEPTED friend, even with duplicate friendship docs.
+        val friendIds = FriendshipRepository.acceptedFriendIds(friendships, uid)
+        val blockedIds = FriendshipRepository.blockedByMe(friendships, uid)
+            .mapNotNull { friendship -> friendship.userIds.firstOrNull { it != uid } }
+
+        // One users/{uid} read per person, all started at once: the wait is
+        // the slowest read instead of the sum of all of them.
+        coroutineScope {
+            val friends = friendIds.map { id -> async { friendFor(id) } }
+            val blocked = blockedIds.map { id -> async { friendFor(id) } }
+            _friends.value = friends.awaitAll().filterNotNull()
+            _blockedUsers.value = blocked.awaitAll().filterNotNull()
+        }
+
+        friendsStore.save(uid, _friends.value, _blockedUsers.value)
+        savedAt = clock()
+        _savedDataNotice.value = null
+        return true
     }
 
     private suspend fun friendFor(userId: String): Friend? =
@@ -119,6 +203,7 @@ class FriendsViewModel(
         val uid = authRepository.currentUserId ?: return
         val code = _searchQuery.value.trim().uppercase()
         if (code.isBlank() || _isSearching.value) return
+        if (refuseOffline()) return
 
         _isSearching.value = true
         _foundUser.value = null
@@ -149,6 +234,7 @@ class FriendsViewModel(
         val uid = authRepository.currentUserId ?: return
         val target = _foundUser.value ?: return
         if (_isSendingRequest.value) return
+        if (refuseOffline()) return
 
         _isSendingRequest.value = true
         viewModelScope.launch {
@@ -177,6 +263,13 @@ class FriendsViewModel(
         _noticeType.value = type
     }
 
+    /** Network-only actions: true (and a message) when there is no connection. */
+    private fun refuseOffline(): Boolean {
+        if (isOnline.value) return false
+        showNotice(OfflineMessages.FRIENDS_ACTION, NoticeType.ERROR)
+        return true
+    }
+
     /** Ends the friendship with [friend] (every doc between both users is deleted). */
     fun onRemoveFriend(friend: Friend) {
         runFriendAction(
@@ -195,6 +288,7 @@ class FriendsViewModel(
 
     fun onUnblock(friend: Friend) {
         val uid = authRepository.currentUserId ?: return
+        if (refuseOffline()) return
         val friendship = FriendshipRepository.blockedByMe(myFriendships, uid)
             .firstOrNull { friend.userId in it.userIds } ?: return
         runFriendAction(
@@ -206,6 +300,7 @@ class FriendsViewModel(
     /** Runs a friendship change, shows the result and reloads both lists. */
     private fun runFriendAction(action: suspend (uid: String) -> Result<Unit>, success: String) {
         val uid = authRepository.currentUserId ?: return
+        if (refuseOffline()) return
         viewModelScope.launch {
             action(uid)
                 .onSuccess { showNotice(success, NoticeType.INFO) }

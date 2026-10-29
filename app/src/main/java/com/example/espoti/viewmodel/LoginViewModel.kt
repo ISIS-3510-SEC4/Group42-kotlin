@@ -4,7 +4,9 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.espoti.data.connectivity.ConnectivityObserver
 import com.example.espoti.data.repository.AuthRepository
+import com.example.espoti.di.AppContainer
 import com.example.espoti.model.NoticeType
 import com.example.espoti.util.EMAIL_EXTENSIONS_HINT
 import com.example.espoti.util.authErrorMessage
@@ -17,9 +19,13 @@ import kotlinx.coroutines.launch
 // Owns the Login form state and its validation. LoginScreen only renders this
 // state and forwards user events. After the local validation passes it signs
 // in with Firebase Auth through AuthRepository.
+// Eventual connectivity (network only): logging in can't work offline, so it
+// isn't attempted without a network; a specific message says why, and it
+// disappears by itself once the device is back online.
 // ============================================================================
 class LoginViewModel(
-    private val authRepository: AuthRepository = AuthRepository()
+    private val authRepository: AuthRepository = AuthRepository(),
+    connectivity: ConnectivityObserver = AppContainer.connectivity
 ) : ViewModel() {
 
     private val _email = mutableStateOf("")
@@ -42,6 +48,10 @@ class LoginViewModel(
 
     private val _noticeType = mutableStateOf(NoticeType.ERROR)
     val noticeType: State<NoticeType> = _noticeType
+
+    val isOnline: State<Boolean> = trackConnectivity(connectivity) {
+        if (_noticeMessage.value == OfflineMessages.LOGIN) dismissNotice()
+    }
 
     fun onEmailChange(value: String) {
         _email.value = value
@@ -86,6 +96,11 @@ class LoginViewModel(
 
         if (error != null) {
             showNotice(error, NoticeType.ERROR)
+            return
+        }
+
+        if (!isOnline.value) {
+            showNotice(OfflineMessages.LOGIN, NoticeType.ERROR)
             return
         }
 
