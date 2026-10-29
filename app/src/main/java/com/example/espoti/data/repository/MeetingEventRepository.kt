@@ -10,6 +10,9 @@ import com.example.espoti.model.domain.VotingRules
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import com.example.espoti.analytics.AnalyticsDependencies
+import com.example.espoti.analytics.VotingTelemetry
+import com.google.firebase.firestore.FirebaseFirestoreException
 
 /**
  * Firestore-backed meetings: meetings/{id} with sub-collections votes, reviews
@@ -24,6 +27,19 @@ open class MeetingEventRepository(
     private val db by lazy(dbProvider)
     private val meetings by lazy { db.collection("meetings") }
 
+    private val votingTelemetry by lazy {
+        VotingTelemetry(
+            emit = { event ->
+                AnalyticsDependencies.tracker.persist(event)
+            },
+            errorCode = { error ->
+                (error as? FirebaseFirestoreException)
+                    ?.code
+                    ?.name
+                    ?: "UNKNOWN"
+            }
+        )
+    }
     open suspend fun createMeeting(meeting: MeetingEvent): Result<String> = runCatching {
         val ref = meetings.document()
         ref.set(meeting.copy(id = ref.id)).await()
@@ -69,8 +85,17 @@ open class MeetingEventRepository(
      * Stores (or replaces) [uid]'s vote: votes/{uid} plus the `votes` map in the
      * meeting document, written together in one batch so they never diverge.
      */
-    open suspend fun castVote(meetingId: String, uid: String, placeId: String): Result<Unit> = runCatching {
+    open suspend fun castVote(
+        meetingId: String,
+        uid: String,
+        placeId: String
+    ): Result<Unit> = votingTelemetry.record(
+        meetingId = meetingId,
+        uid = uid,
+        placeId = placeId
+    ) {
         val meetingRef = meetings.document(meetingId)
+
         val vote = Vote(
             id = uid,
             userId = uid,
@@ -78,10 +103,20 @@ open class MeetingEventRepository(
             selected = true,
             timeStamp = System.currentTimeMillis()
         )
+
         db.batch()
-            .set(meetingRef.collection("votes").document(uid), vote)
-            .update(meetingRef, "votes.$uid", placeId)
-            .commit().await()
+            .set(
+                meetingRef.collection("votes").document(uid),
+                vote
+            )
+            .update(
+                meetingRef,
+                "votes.$uid",
+                placeId
+            )
+            .commit()
+            .await()
+
         Unit
     }
 

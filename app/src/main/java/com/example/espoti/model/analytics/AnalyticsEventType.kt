@@ -12,7 +12,11 @@ enum class AnalyticsEventType {
     FEATURE_USED,
     FILTER_USED,
     MEETING_CREATED,
-    PLACE_SELECTED
+    PLACE_SELECTED,
+    VOTE_ATTEMPTED,
+    VOTE_SUCCEEDED,
+    VOTE_FAILED,
+    VOTE_CANCELLED,
 }
 
 enum class PlatformType {
