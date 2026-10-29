@@ -197,11 +197,15 @@ class AnalyticsTracker(
             AnalyticsEventType.FILTER_USED ->
                 featureEventFactory
 
-            AnalyticsEventType.MEETING_CREATED ->
+            AnalyticsEventType.MEETING_CREATED,
+            AnalyticsEventType.VOTE_SUCCEEDED,
+            AnalyticsEventType.VOTE_FAILED,
+            AnalyticsEventType.VOTE_CANCELLED,
+            AnalyticsEventType.VOTE_ATTEMPTED->
                 meetingEventFactory
         }
     }
-    private fun persist(event: AnalyticsEvent) {
+    internal fun persist(event: AnalyticsEvent) {
         scope.launch {
             try {
                 repository.saveEvent(event)

@@ -2,6 +2,8 @@ package com.example.espoti.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,6 +54,9 @@ import com.example.espoti.data.location.AndroidLocationService
 import com.example.espoti.data.repository.MeetingContextRepository
 import com.example.espoti.viewmodel.MeetingsViewModel
 import com.example.espoti.analytics.AnalyticsDependencies
+import com.example.espoti.data.repository.AuthRepository
+import com.example.espoti.di.AppContainer
+import com.example.espoti.ui.components.OfflineBanner
 
 // ============================================================================
 // SCREEN ROUTES
@@ -153,7 +159,18 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     // list across tab switches.
     val notificationsViewModel: NotificationsViewModel = viewModel()
     val notifications by notificationsViewModel.notifications
+    val notificationsNotice by notificationsViewModel.savedDataNotice
+    val notificationsActionError by notificationsViewModel.actionError
     var showNotifications by remember { mutableStateOf(false) }
+
+    val isOnline by AppContainer.connectivity.isOnline.collectAsState()
+
+    // Firebase Auth keeps the session on the device, so a user who is already
+    // signed in goes straight to Home - this is what lets the app open (with
+    // the data saved on the device) without internet. Read once per launch.
+    val startDestination = remember {
+        if (AuthRepository().currentUserId != null) Screen.Home.route else Screen.Welcome.route
+    }
 
     // This is a one-shot read (no live listener - see NotificationsViewModel),
     // so re-fetch every time the panel opens instead of relying on the single
@@ -175,8 +192,11 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     // declare a `bottomNavItem`, and every tab behaves the same everywhere.
     Scaffold(
         // The screens' own Scaffolds already handle the status-bar inset, so
-        // this one only reserves the space taken by the bottom bar.
+        // this one only reserves the space taken by the offline banner and the
+        // bottom bar.
         contentWindowInsets = WindowInsets(0.dp),
+        // Eventual connectivity: one banner at the top of every screen while offline.
+        topBar = { if (!isOnline) OfflineBanner() },
         bottomBar = {
             // Hidden while the keyboard is open so it doesn't float over it.
             if (selectedTab != null && !keyboardVisible) {
@@ -193,12 +213,18 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Welcome.route,
+            startDestination = startDestination,
             // Lifts every screen above the keyboard (the window doesn't resize on
             // its own because the app is edge-to-edge). Scrollable screens then
             // keep the focused field in view.
+            // The offline banner already covers the status bar, so its height is
+            // consumed: the screens' own Scaffolds don't add that inset again.
             modifier = Modifier
-                .padding(bottom = innerPadding.calculateBottomPadding())
+                .padding(
+                    top = innerPadding.calculateTopPadding(),
+                    bottom = innerPadding.calculateBottomPadding()
+                )
+                .consumeWindowInsets(PaddingValues(top = innerPadding.calculateTopPadding()))
                 .windowInsetsPadding(keyboardInsets)
         ) {
             composable(Screen.Welcome.route) {
@@ -260,7 +286,12 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 HomeScreen(
                     onCreateMeetingClick = { navController.navigateToCreateMeeting() },
                     hasUnreadNotifications = notifications.isNotEmpty(),
-                    onNotificationsClick = { showNotifications = true }
+                    onNotificationsClick = { showNotifications = true },
+                    onMeetingClick = { meetingId ->
+                        AnalyticsDependencies.tracker.featureUsed(feature = "HOME_MEETINGS", meetingId = meetingId)
+                        navController.navigate(Screen.MeetingDetail.createRoute(meetingId))
+                    },
+                    onSeeAllMeetingsClick = { navController.navigateToTab(Screen.Meetings) }
                 )
             }
             composable(Screen.CreateMeeting1.route) { backStackEntry ->
@@ -368,13 +399,13 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
             composable(Screen.Profile.route) {
                 ProfileScreen(
                     onEditProfileClick = { navController.navigate(Screen.EditProfile.route) },
-                    // No backend yet: both just drop the user back to Welcome
-                    // and clear the stack, same placeholder as the old logout.
+                    // Both end the session (ProfileViewModel / DeleteAccountViewModel
+                    // already signed out): back to Welcome with a clean stack.
                     onLogoutClick = {
                         notificationsViewModel.clear()
                         navController.navigate(Screen.Welcome.route) { popUpTo(0) }
                     },
-                    onDeleteAccountClick = {
+                    onAccountDeleted = {
                         notificationsViewModel.clear()
                         navController.navigate(Screen.Welcome.route) { popUpTo(0) }
                     },
@@ -395,6 +426,9 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
     NotificationsPanel(
         visible = showNotifications,
         notifications = notifications,
+        savedDataNotice = notificationsNotice,
+        actionError = notificationsActionError,
+        actionsEnabled = isOnline,
         onDismiss = { showNotifications = false },
         onAcceptFriendInvite = notificationsViewModel::onAcceptFriendInvite,
         onDeclineFriendInvite = notificationsViewModel::onDeclineFriendInvite,

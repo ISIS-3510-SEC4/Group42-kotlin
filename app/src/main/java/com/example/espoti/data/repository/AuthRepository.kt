@@ -1,5 +1,6 @@
 package com.example.espoti.data.repository
 
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.tasks.await
 
@@ -22,7 +23,18 @@ open class AuthRepository(
         auth.signInWithEmailAndPassword(email, password).await().user!!.uid
     }
 
-    /** Rolls back a just-created account (used when saving its profile document fails). */
+    /**
+     * Checks the signed-in user's [password] again. Firebase only lets an
+     * account be deleted right after a login, so Delete account calls this first.
+     */
+    open suspend fun reauthenticate(password: String): Result<Unit> = runCatching {
+        val user = checkNotNull(auth.currentUser) { "Not signed in" }
+        val email = checkNotNull(user.email) { "This account has no email" }
+        user.reauthenticate(EmailAuthProvider.getCredential(email, password)).await()
+        Unit
+    }
+
+    /** Deletes the signed-in Firebase Auth account (Register rollback and Delete account). */
     open suspend fun deleteCurrentUser(): Result<Unit> = runCatching {
         auth.currentUser?.delete()?.await()
         Unit
