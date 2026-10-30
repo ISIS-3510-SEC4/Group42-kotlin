@@ -28,6 +28,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import com.example.espoti.data.local.FileFriendSearchDraftStore
+import com.example.espoti.data.local.FriendSearchDraftStore
+import com.example.espoti.data.local.InMemoryFriendSearchDraftStore
+import java.io.File
+import com.example.espoti.data.local.TransportFilterPreferences
+import com.example.espoti.data.local.SharedPreferencesTransportFilterPreferences
+import com.example.espoti.data.local.InMemoryTransportFilterPreferences
 
 // ============================================================================
 // APP CONTAINER (manual dependency injection for the Sprint 3 layers)
@@ -85,6 +92,33 @@ object AppContainer {
     val pendingActions: PendingActionStore
         get() = if (isReady) sqlitePendingActions else InMemoryPendingActionStore()
 
+
+    // ---- Local files -------------------------------------------------------
+
+    private val fileFriendSearchDrafts by lazy {
+        FileFriendSearchDraftStore(
+            File(context.filesDir, "friend_search_drafts")
+        )
+    }
+
+    val friendSearchDraftStore: FriendSearchDraftStore
+        get() = if (isReady) {
+            fileFriendSearchDrafts
+        } else {
+            InMemoryFriendSearchDraftStore()
+        }
+    // ---- Preferences -------------------------------------------------------
+
+    private val savedTransportFilters by lazy {
+        SharedPreferencesTransportFilterPreferences(context)
+    }
+
+    val transportFilterPreferences: TransportFilterPreferences
+        get() = if (isReady) {
+            savedTransportFilters
+        } else {
+            InMemoryTransportFilterPreferences()
+        }
     // ---- Caching ------------------------------------------------------------
 
     private val sharedUserCache by lazy { UserCache() }

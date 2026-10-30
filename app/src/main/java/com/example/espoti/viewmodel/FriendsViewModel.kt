@@ -30,6 +30,9 @@ import com.example.espoti.data.sync.SyncScheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import com.example.espoti.data.local.FriendSearchDraftStore
+import kotlinx.coroutines.CoroutineScope
+import java.util.Locale
 
 /**
  * Loads the signed-in user's own code and accepted friends from Firestore
@@ -67,7 +70,10 @@ class FriendsViewModel(
     private val clock: () -> Long = System::currentTimeMillis,
     private val pendingActions: PendingActionStore =
         AppContainer.pendingActions,
-    private val syncScheduler: SyncScheduler = AppContainer.syncScheduler
+    private val syncScheduler: SyncScheduler = AppContainer.syncScheduler,
+    private val draftStore: FriendSearchDraftStore =
+        AppContainer.friendSearchDraftStore,
+    private val persistenceScope: CoroutineScope = AppContainer.appScope
 ) : ViewModel() {
 
     private val _myName = mutableStateOf("")
@@ -123,6 +129,8 @@ class FriendsViewModel(
 
     private var requestStatusJob: Job? = null
 
+    private var draftVersion = 0L
+    private var draftWriteJob: Job? = null
     val isOnline: State<Boolean> = trackConnectivity(
         connectivity,
         onDisconnected = {
@@ -135,6 +143,7 @@ class FriendsViewModel(
     )
 
     init {
+        restoreSearchDraft()
         reload()
         refreshFriendRequests(reschedule = true)
     }
@@ -219,8 +228,75 @@ class FriendsViewModel(
     // Codes are generated uppercase-only (see RegisterViewModel.generateFriendCode);
     // Firestore's equality query is case-sensitive, so force the input to match
     // regardless of how the user typed it.
+// Codes are generated uppercase-only; normalize before displaying and saving.
     fun onSearchQueryChange(value: String) {
-        _searchQuery.value = value.uppercase()
+        val query = value.uppercase(Locale.ROOT)
+            .take(FriendSearchDraftStore.MAX_LENGTH)
+
+        draftVersion++
+        _searchQuery.value = query
+        _foundUser.value = null
+
+        val uid = authRepository.currentUserId ?: return
+        queueDraftSave(uid, query)
+    }
+
+    /** A slow restore must never overwrite something the user already typed. */
+    private fun restoreSearchDraft() {
+        val uid = authRepository.currentUserId ?: return
+        val version = draftVersion
+
+        viewModelScope.launch {
+            try {
+                val saved = draftStore.read(uid)
+
+                currentCoroutineContext().ensureActive()
+
+                if (
+                    authRepository.currentUserId == uid &&
+                    draftVersion == version
+                ) {
+                    _searchQuery.value = saved
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showNotice(
+                    "Couldn't restore your search draft.",
+                    NoticeType.ERROR
+                )
+            }
+        }
+    }
+
+    /**
+     * Writes are ordered so an older keystroke cannot replace a newer value.
+     * The application scope lets an accepted save finish after leaving Friends.
+     */
+    private fun queueDraftSave(
+        uid: String,
+        query: String
+    ) {
+        val previous = draftWriteJob
+
+        draftWriteJob = persistenceScope.launch {
+            previous?.join()
+
+            try {
+                draftStore.save(uid, query)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                viewModelScope.launch {
+                    if (authRepository.currentUserId == uid) {
+                        showNotice(
+                            "Couldn't save your search draft on this device.",
+                            NoticeType.ERROR
+                        )
+                    }
+                }
+            }
+        }
     }
 
     fun dismissNotice() {
@@ -316,8 +392,11 @@ class FriendsViewModel(
 
                 currentCoroutineContext().ensureActive()
 
+// The confirmed request is already in SQLite; its form draft can be cleared.
+                draftVersion++
                 _searchQuery.value = ""
                 _foundUser.value = null
+                queueDraftSave(uid, "")
 
                 refreshFriendRequests()
 

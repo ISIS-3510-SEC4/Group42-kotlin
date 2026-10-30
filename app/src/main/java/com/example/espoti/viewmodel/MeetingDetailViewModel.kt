@@ -28,6 +28,8 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
+import com.example.espoti.data.local.TransportFilterPreferences
+import kotlinx.coroutines.CoroutineScope
 /**
  * One meeting from Firestore (route arg "meetingId"). While it is VOTING it
  * also exposes the candidate places with their vote counts, and lets the
@@ -42,7 +44,10 @@ class MeetingDetailViewModel(
     private val analyticsTracker: AnalyticsTracker = AnalyticsDependencies.tracker,
     private val currentUserId: () -> String? = { AuthRepository().currentUserId },
     private val clock: () -> Long = System::currentTimeMillis,
-    connectivity: ConnectivityObserver = AppContainer.connectivity
+    connectivity: ConnectivityObserver = AppContainer.connectivity,
+    private val filterPreferences: TransportFilterPreferences =
+        AppContainer.transportFilterPreferences,
+    private val persistenceScope: CoroutineScope = AppContainer.appScope
 ) : MeetingContextViewModel(contextRepository) {
 
     private val meetingId: String? = savedStateHandle.get<String>("meetingId")
@@ -85,6 +90,8 @@ class MeetingDetailViewModel(
     private val _transportFilterError = mutableStateOf<String?>(null)
     val transportFilterError: State<String?> = _transportFilterError
 
+    private var filterWriteJob: Job? = null
+    private var filterPreferenceRestoreError: String? = null
     private var loadJob: Job? = null
     private var loadVersion = 0L
 
@@ -122,6 +129,8 @@ class MeetingDetailViewModel(
 
         loadJob = viewModelScope.launch {
             try {
+                restoreTransportFilters(uid)
+
                 if (!isOnline.value) {
                     loadCachedDetail(id, uid)
                     return@launch
@@ -263,7 +272,7 @@ class MeetingDetailViewModel(
 
         if (displayedMeeting.isVoting) {
             _canUseTransportFilters.value = validOrigin
-            _transportFilterError.value = null
+            _transportFilterError.value = filterPreferenceRestoreError
 
             if (!validOrigin) {
                 _transportFilters.value = TransportFilters()
@@ -362,6 +371,7 @@ class MeetingDetailViewModel(
         if (filters == previous) return
 
         _transportFilters.value = filters
+        saveTransportFilters(filters)
         refreshVisibleCandidates()
 
         if (!filters.isActive) return
@@ -458,4 +468,55 @@ class MeetingDetailViewModel(
             )
         }
     }
+    /**
+     * Restoring preferences changes the initial UI state only.
+     * It does not call applyTransportFilters or emit FILTER_USED events.
+     */
+    private suspend fun restoreTransportFilters(uid: String) {
+        try {
+            // Finish any earlier save before reading the settings again.
+            filterWriteJob?.join()
+
+            val restored = filterPreferences.read(uid)
+
+            currentCoroutineContext().ensureActive()
+
+            if (currentUserId() == uid) {
+                _transportFilters.value = restored
+                filterPreferenceRestoreError = null
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            filterPreferenceRestoreError =
+                "Couldn't restore your saved filter settings."
+        }
+    }
+
+    /**
+     * Save only explicit filter changes.
+     * Writes are ordered and may finish after leaving the detail screen.
+     */
+    private fun saveTransportFilters(filters: TransportFilters) {
+        val uid = currentUserId() ?: return
+        val previous = filterWriteJob
+
+        filterWriteJob = persistenceScope.launch {
+            previous?.join()
+
+            try {
+                filterPreferences.save(uid, filters)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                viewModelScope.launch {
+                    if (currentUserId() == uid) {
+                        _transportFilterError.value =
+                            "Filters applied, but couldn't save your settings on this device."
+                    }
+                }
+            }
+        }
+    }
 }
+
