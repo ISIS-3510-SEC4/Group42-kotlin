@@ -22,4 +22,13 @@ sealed class AppNotification {
         val title: String,
         val dateLabel: String?
     ) : AppNotification()
+
+    data class LocationPending(
+        override val id: String,
+        val fromName: String,
+        val title: String,
+        val dateLabel: String?
+    ) : AppNotification()
 }
+
+

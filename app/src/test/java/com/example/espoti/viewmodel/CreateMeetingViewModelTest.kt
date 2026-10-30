@@ -289,15 +289,23 @@ class CreateMeetingViewModelTest {
     @Test
     fun leavingOnRecommendations_tracksStepCountAndSelection() {
         val vm = newViewModel()
-        vm.onDateSelected(java.time.LocalDate.of(2025, 10, 14))
+
+        // Usamos una fecha futura válida para la validación actual.
+        vm.onDateSelected(java.time.LocalDate.now().plusDays(8))
+
         vm.requestRecommendations()
         vm.onRestaurantSelected(place)
-        // CreateMeeting2 resets the list when it leaves the screen.
+
+        // La pantalla limpia las recomendaciones al salir.
         vm.cancelRecommendations()
         clear(vm)
 
         val event = abandonedEvents().single()
-        assertEquals(CreateMeetingViewModel.STEP_RECOMMENDATIONS, event.step)
+
+        assertEquals(
+            CreateMeetingViewModel.STEP_RECOMMENDATIONS,
+            event.step
+        )
         assertEquals(true, event.metadata["hadSelection"])
         assertEquals(true, event.metadata["hadDate"])
         assertEquals(1, event.metadata["recommendationCount"])

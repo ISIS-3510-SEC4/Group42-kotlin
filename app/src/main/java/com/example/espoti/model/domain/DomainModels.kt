@@ -80,6 +80,8 @@ data class MeetingEvent(
     val status: StatusMeeting = StatusMeeting.UPCOMING,
     val placeId: String? = null,
     val location: Location? = null,
+    val startingLocations: Map<String, Location> = emptyMap(),
+    val centerLocation: Location? = null,
     val timeEstimated: String = "",
     val votingDeadline: Long = 0L,
     val createdAt: Long = 0L,

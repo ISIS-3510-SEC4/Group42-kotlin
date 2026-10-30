@@ -1,9 +1,11 @@
 package com.example.espoti.data.local
 
+import android.R.id
 import android.database.sqlite.SQLiteDatabase
 import com.example.espoti.model.AppNotification
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+
 
 /** Notifications as they were the last time they were loaded from Firestore. */
 data class SavedNotifications(
@@ -38,6 +40,12 @@ class SqliteNotificationsLocalStore(
                     fromName = string("from_name")
                 )
                 MEETING -> AppNotification.MeetingInvite(
+                    id = string("id"),
+                    fromName = string("from_name"),
+                    title = stringOrNull("title").orEmpty(),
+                    dateLabel = stringOrNull("date_label")
+                )
+                LOCATION_PENDING -> AppNotification.LocationPending(
                     id = string("id"),
                     fromName = string("from_name"),
                     title = stringOrNull("title").orEmpty(),
@@ -87,6 +95,17 @@ class SqliteNotificationsLocalStore(
                             "position" to index,
                             "cached_at" to now
                         )
+                        is AppNotification.LocationPending -> contentValuesOf(
+                            "owner_uid" to ownerUid,
+                            "id" to notification.id,
+                            "type" to LOCATION_PENDING,
+                            "from_name" to notification.fromName,
+                            "title" to notification.title,
+                            "date_label" to notification.dateLabel,
+                            "position" to index,
+                            "cached_at" to now
+                        )
+
                     }
                     insertWithOnConflict(EspotiDatabase.NOTIFICATIONS, null, values, SQLiteDatabase.CONFLICT_REPLACE)
                 }
@@ -103,6 +122,7 @@ class SqliteNotificationsLocalStore(
     private companion object {
         const val FRIEND = "FRIEND"
         const val MEETING = "MEETING"
+        const val LOCATION_PENDING = "LOCATION_PENDING"
         const val NONE = "NONE"
     }
 }

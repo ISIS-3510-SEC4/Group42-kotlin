@@ -9,6 +9,8 @@ import com.example.espoti.data.local.NotificationsLocalStore
 import com.example.espoti.data.repository.AuthRepository
 import com.example.espoti.data.repository.FriendshipRepository
 import com.example.espoti.data.repository.MeetingEventRepository
+import com.example.espoti.data.repository.MeetingPreparationService
+import com.example.espoti.data.repository.PlaceRepository
 import com.example.espoti.data.repository.UserRepository
 import com.example.espoti.di.AppContainer
 import com.example.espoti.model.AppNotification
@@ -50,7 +52,9 @@ class NotificationsViewModel(
     private val meetingRepository: MeetingEventRepository = MeetingEventRepository(),
     private val clock: () -> Long = System::currentTimeMillis,
     private val notificationsStore: NotificationsLocalStore = AppContainer.notificationsStore,
-    connectivity: ConnectivityObserver = AppContainer.connectivity
+    connectivity: ConnectivityObserver = AppContainer.connectivity,
+    private val placeRepository: PlaceRepository = PlaceRepository()
+
 ) : ViewModel() {
 
     private val _notifications = mutableStateOf<List<AppNotification>>(emptyList())
@@ -70,6 +74,13 @@ class NotificationsViewModel(
         onDisconnected = { if (_notifications.value.isNotEmpty()) markSavedData("You're offline.", null) },
         onReconnected = { refresh() }
     )
+
+    private val meetingPreparationService by lazy {
+        MeetingPreparationService(
+            meetingRepository = meetingRepository,
+            placeRepository = placeRepository
+        )
+    }
 
     init {
         refresh()
@@ -110,69 +121,188 @@ class NotificationsViewModel(
     }
 
     /** Throws if Firestore can't be reached, so [refresh] falls back to the saved list. */
-    private suspend fun loadFromFirestore(uid: String): List<AppNotification> = coroutineScope {
-        // Independent reads: both are in flight at the same time.
-        val friendshipsRequest = async { friendshipRepository.getFriendships(uid).getOrThrow() }
-        val invitationsRequest = async { meetingRepository.getInvitationsFor(uid).getOrThrow() }
+
+    private suspend fun loadFromFirestore(
+        uid: String
+    ): List<AppNotification> = coroutineScope {
+
+        // Three independent Firestore reads run concurrently.
+        val friendshipsRequest = async {
+            friendshipRepository.getFriendships(uid).getOrThrow()
+        }
+
+        val invitationsRequest = async {
+            meetingRepository.getInvitationsFor(uid).getOrThrow()
+        }
+
+        val locationPendingRequest = async {
+            meetingRepository.getMeetingsPendingLocation(uid)
+                .getOrNull()
+                .orEmpty()
+        }
 
         val friendships = friendshipsRequest.await()
-        // Nothing from a user blocked in either direction.
-        val blocked = FriendshipRepository.blockedUserIds(friendships, uid)
 
+        // Exclude users blocked in either direction.
+        val blocked = FriendshipRepository.blockedUserIds(
+            friendships,
+            uid
+        )
+
+        // Friend invitations addressed to the current user.
         val friendInvites = friendships
-            // sendRequest stores userIds as [fromUid, toUid]: only requests
-            // where I'm the recipient (toUid) belong in MY notifications.
-            .filter { it.status == FriendshipStatus.PENDING && it.userIds.getOrNull(1) == uid }
+            .filter {
+                it.status == FriendshipStatus.PENDING &&
+                        it.userIds.getOrNull(1) == uid
+            }
             .mapNotNull { friendship ->
-                val fromId = friendship.userIds.getOrNull(0) ?: return@mapNotNull null
-                // One username read per sender, all started at once.
+                val fromId = friendship.userIds.getOrNull(0)
+                    ?: return@mapNotNull null
+
                 async {
-                    userRepository.getUser(fromId).getOrNull()?.let { fromUser ->
-                        AppNotification.FriendInvite(id = friendship.id, fromUserId = fromId, fromName = fromUser.username)
-                    }
+                    userRepository.getUser(fromId)
+                        .getOrNull()
+                        ?.let { fromUser ->
+                            AppNotification.FriendInvite(
+                                id = friendship.id,
+                                fromUserId = fromId,
+                                fromName = fromUser.username
+                            )
+                        }
                 }
             }
 
         val now = clock()
+
+        // Invitations to meetings that still need a response.
         val meetingInvites = invitationsRequest.await()
-            // An invite to a meeting whose voting already ended is useless.
-            .filter { VotingRules.effectiveStatus(it, now) == StatusMeeting.VOTING }
+            .filter {
+                VotingRules.effectiveStatus(it, now) ==
+                        StatusMeeting.VOTING ||
+                        it.status == StatusMeeting.COLLECTING_LOCATIONS
+            }
             .filterNot { it.creatorId in blocked }
             .map { meeting ->
                 async {
                     AppNotification.MeetingInvite(
                         id = meeting.id,
-                        fromName = userRepository.getUser(meeting.creatorId).getOrNull()?.username ?: "A friend",
+                        fromName = userRepository
+                            .getUser(meeting.creatorId)
+                            .getOrNull()
+                            ?.username ?: "A friend",
                         title = meeting.activityLabel(),
-                        dateLabel = meeting.date.takeIf { it > 0 }?.let(::formatMeetingDate)
+                        dateLabel = meeting.date
+                            .takeIf { it > 0 }
+                            ?.let(::formatMeetingDate)
                     )
                 }
             }
 
-        meetingInvites.awaitAll() + friendInvites.awaitAll().filterNotNull()
+        // Accepted participants who still need to submit their location.
+        val locationPending = locationPendingRequest.await()
+            .filterNot { it.creatorId in blocked }
+            .map { meeting ->
+                async {
+                    AppNotification.LocationPending(
+                        id = meeting.id,
+                        fromName = userRepository
+                            .getUser(meeting.creatorId)
+                            .getOrNull()
+                            ?.username ?: "A friend",
+                        title = meeting.activityLabel(),
+                        dateLabel = meeting.date
+                            .takeIf { it > 0 }
+                            ?.let(::formatMeetingDate)
+                    )
+                }
+            }
+
+        // Await each list of child coroutines inside the same scope.
+        meetingInvites.awaitAll() +
+                friendInvites.awaitAll().filterNotNull() +
+                locationPending.awaitAll()
     }
 
+
     /** Joins the meeting; [onAccepted] gets its id (the panel then opens it to vote). */
-    fun onAcceptMeetingInvite(notification: AppNotification.MeetingInvite, onAccepted: (String) -> Unit) {
+
+
+
+
+    fun onAcceptMeetingInvite(
+        notification: AppNotification.MeetingInvite,
+        onAccepted: (String, StatusMeeting?) -> Unit
+    ) {
         val uid = authRepository.currentUserId ?: return
         if (refuseOffline()) return
+
         viewModelScope.launch {
             meetingRepository.acceptInvitation(notification.id, uid)
                 .onSuccess {
                     removeNotification(notification.id)
-                    onAccepted(notification.id)
+
+                    // Check whether this response completed meeting preparation.
+                    runCatching {
+                        prepareMeetingIfReady(notification.id)
+                    }.onFailure { error ->
+                        android.util.Log.e(
+                            "NotificationsViewModel",
+                            "Could not prepare meeting recommendations",
+                            error
+                        )
+                    }
+
+                    // Retrieve the updated status after preparation.
+                    meetingRepository.getMeeting(notification.id)
+                        .onSuccess { meeting ->
+                            onAccepted(notification.id, meeting?.status)
+                        }
+                        .onFailure {
+                            onAccepted(notification.id, null)
+                        }
+                }
+                .onFailure { error ->
+                    android.util.Log.e(
+                        "NotificationsViewModel",
+                        "Could not accept meeting invitation",
+                        error
+                    )
                 }
         }
     }
 
-    fun onDeclineMeetingInvite(notification: AppNotification.MeetingInvite) {
+
+    fun onDeclineMeetingInvite(
+        notification: AppNotification.MeetingInvite
+    ) {
         val uid = authRepository.currentUserId ?: return
         if (refuseOffline()) return
+
         viewModelScope.launch {
             meetingRepository.declineInvitation(notification.id, uid)
-                .onSuccess { removeNotification(notification.id) }
+                .onSuccess {
+                    removeNotification(notification.id)
+
+                    runCatching {
+                        prepareMeetingIfReady(notification.id)
+                    }.onFailure { error ->
+                        android.util.Log.e(
+                            "NotificationsViewModel",
+                            "Could not prepare meeting recommendations after declining invitation",
+                            error
+                        )
+                    }
+                }
+                .onFailure { error ->
+                    android.util.Log.e(
+                        "NotificationsViewModel",
+                        "Could not decline meeting invitation",
+                        error
+                    )
+                }
         }
     }
+
 
     fun onAcceptFriendInvite(notification: AppNotification.FriendInvite) {
         if (refuseOffline()) return
@@ -203,6 +333,19 @@ class NotificationsViewModel(
         val uid = authRepository.currentUserId ?: return
         val remaining = _notifications.value
         viewModelScope.launch { notificationsStore.save(uid, remaining) }
+    }
+
+    private suspend fun prepareMeetingIfReady(meetingId: String) {
+        val meeting = meetingRepository
+            .getMeeting(meetingId)
+            .getOrThrow()
+            ?: throw IllegalStateException("Meeting not found.")
+
+        if (meeting.status == StatusMeeting.PREPARING_RECOMMENDATIONS) {
+            meetingPreparationService
+                .prepareRecommendations(meetingId)
+                .getOrThrow()
+        }
     }
 
     /** Called on logout: this instance outlives the session, so it must not

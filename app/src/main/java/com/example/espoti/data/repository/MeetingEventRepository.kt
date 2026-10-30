@@ -10,6 +10,7 @@ import com.example.espoti.model.domain.VotingRules
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import com.example.espoti.model.domain.Location
 import com.example.espoti.analytics.AnalyticsDependencies
 import com.example.espoti.analytics.VotingTelemetry
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -60,6 +61,44 @@ open class MeetingEventRepository(
             .documents.mapNotNull { d -> d.toObject(MeetingEvent::class.java)?.copy(id = d.id) }
     }
 
+    /**
+     * Returns the most recent starting location recorded by this user
+     * in a previous meeting.
+     */
+    open suspend fun getPreviousStartingLocation(
+        uid: String,
+        currentMeetingId: String
+    ): Result<Location?> = runCatching {
+        val previousMeetings = getMeetingsForUser(uid).getOrThrow()
+
+        previousMeetings
+            .asSequence()
+            .filter { it.id != currentMeetingId }
+            .filter { it.date < System.currentTimeMillis() }
+            .sortedByDescending { it.date }
+            .mapNotNull { it.startingLocations[uid] }
+            .firstOrNull()
+    }
+
+    open suspend fun getMeetingsPendingLocation(
+        uid: String
+    ): Result<List<MeetingEvent>> = runCatching {
+        meetings
+            .whereArrayContains("participantIds", uid)
+            .get()
+            .await()
+            .documents
+            .mapNotNull { document ->
+                document.toObject(MeetingEvent::class.java)
+                    ?.copy(id = document.id)
+            }
+            .filter { meeting ->
+                meeting.status == StatusMeeting.COLLECTING_LOCATIONS &&
+                        meeting.startingLocations[uid] == null
+            }
+    }
+
+
     /** Meetings the user was invited to and hasn't answered yet. */
     open suspend fun getInvitationsFor(uid: String): Result<List<MeetingEvent>> = runCatching {
         meetings.whereArrayContains("invitedIds", uid)
@@ -67,17 +106,193 @@ open class MeetingEventRepository(
             .documents.mapNotNull { d -> d.toObject(MeetingEvent::class.java)?.copy(id = d.id) }
     }
 
+    private fun getReadyUpdates(
+        invitedIds: List<String>,
+        participantIds: List<String>,
+        startingLocations: Map<String, Location>
+    ): Map<String, Any> {
+        val updates = mutableMapOf<String, Any>(
+            "invitedIds" to invitedIds,
+            "participantIds" to participantIds,
+            "startingLocations" to startingLocations
+        )
+
+        val allParticipantsHaveLocation =
+            participantIds.isNotEmpty() &&
+                    participantIds.all { it in startingLocations }
+
+        if (invitedIds.isEmpty() && allParticipantsHaveLocation) {
+            val locations = participantIds.map { startingLocations.getValue(it) }
+
+            val center = Location(
+                latitude = locations.map { it.latitude }.average(),
+                longitude = locations.map { it.longitude }.average()
+            )
+
+            updates["centerLocation"] = center
+            updates["status"] =
+                StatusMeeting.PREPARING_RECOMMENDATIONS.name
+        }
+
+        return updates
+    }
+
     /** Moves [uid] from invitedIds to participantIds in one atomic update. */
-    open suspend fun acceptInvitation(meetingId: String, uid: String): Result<Unit> = runCatching {
-        meetings.document(meetingId).update(
-            "invitedIds", FieldValue.arrayRemove(uid),
-            "participantIds", FieldValue.arrayUnion(uid)
-        ).await()
+    open suspend fun acceptInvitation(
+        meetingId: String,
+        uid: String
+    ): Result<Unit> = runCatching {
+        val meetingRef = meetings.document(meetingId)
+
+        db.runTransaction { transaction ->
+            val snapshot = transaction.get(meetingRef)
+            val meeting = snapshot.toObject(MeetingEvent::class.java)
+                ?: throw IllegalStateException("Meeting not found.")
+
+            require(meeting.status == StatusMeeting.COLLECTING_LOCATIONS) {
+                "The meeting is not accepting invitations."
+            }
+
+            require(uid in meeting.invitedIds) {
+                "This user does not have a pending invitation."
+            }
+
+            val updatedInvitedIds = meeting.invitedIds - uid
+            val updatedParticipantIds = (meeting.participantIds + uid).distinct()
+
+            val updates = getReadyUpdates(
+                invitedIds = updatedInvitedIds,
+                participantIds = updatedParticipantIds,
+                startingLocations = meeting.startingLocations
+            )
+
+            transaction.update(meetingRef, updates)
+        }.await()
+
         Unit
     }
 
-    open suspend fun declineInvitation(meetingId: String, uid: String): Result<Unit> = runCatching {
-        meetings.document(meetingId).update("invitedIds", FieldValue.arrayRemove(uid)).await()
+
+    /**
+     * Saves a participant's starting location.
+     *
+     * Returns true when all invitations have been answered
+     * and every accepted participant has a location,
+     * advancing the meeting to PREPARING_RECOMMENDATIONS.
+     */
+    open suspend fun saveStartingLocation(
+        meetingId: String,
+        uid: String,
+        location: Location
+    ): Result<Boolean> = runCatching {
+        val meetingRef = meetings.document(meetingId)
+
+        db.runTransaction { transaction ->
+            val snapshot = transaction.get(meetingRef)
+            val meeting = snapshot.toObject(MeetingEvent::class.java)
+                ?: throw IllegalStateException("Meeting not found.")
+
+            require(uid in meeting.participantIds) {
+                "This user is not an accepted participant."
+            }
+
+            require(meeting.status == StatusMeeting.COLLECTING_LOCATIONS) {
+                "The meeting is not collecting locations."
+            }
+
+            val updatedLocations = meeting.startingLocations +
+                    (uid to location)
+
+            val allLocationsCollected =
+                meeting.participantIds.isNotEmpty() &&
+                        meeting.participantIds.all { it in updatedLocations }
+
+            val updates = getReadyUpdates(
+                invitedIds = meeting.invitedIds,
+                participantIds = meeting.participantIds,
+                startingLocations = updatedLocations
+            )
+
+            transaction.update(meetingRef, updates)
+
+            meeting.invitedIds.isEmpty() && allLocationsCollected
+        }.await()
+    }
+
+
+    /**
+     * Saves the candidate places and starts voting atomically.
+     * Returns true only if this call successfully transitions the meeting
+     * from PREPARING_RECOMMENDATIONS to VOTING.
+     */
+    open suspend fun saveCandidatesAndStartVoting(
+        meetingId: String,
+        candidatePlaceIds: List<String>
+    ): Result<Boolean> = runCatching {
+        val candidates = candidatePlaceIds
+            .filter { it.isNotBlank() }
+            .distinct()
+
+        require(candidates.size >= 2) {
+            "At least two candidate places are required to start voting."
+        }
+
+        val meetingRef = meetings.document(meetingId)
+
+        db.runTransaction { transaction ->
+            val snapshot = transaction.get(meetingRef)
+            val meeting = snapshot.toObject(MeetingEvent::class.java)
+                ?: throw IllegalStateException("Meeting not found.")
+
+            // Another participant may already have started voting.
+            if (meeting.status != StatusMeeting.PREPARING_RECOMMENDATIONS) {
+                return@runTransaction false
+            }
+
+            transaction.update(
+                meetingRef,
+                mapOf(
+                    "candidatePlaceIds" to candidates,
+                    "status" to StatusMeeting.VOTING.name
+                )
+            )
+
+            true
+        }.await()
+    }
+
+
+
+    open suspend fun declineInvitation(
+        meetingId: String,
+        uid: String
+    ): Result<Unit> = runCatching {
+        val meetingRef = meetings.document(meetingId)
+
+        db.runTransaction { transaction ->
+            val snapshot = transaction.get(meetingRef)
+            val meeting = snapshot.toObject(MeetingEvent::class.java)
+                ?: throw IllegalStateException("Meeting not found.")
+
+            require(meeting.status == StatusMeeting.COLLECTING_LOCATIONS) {
+                "The meeting is not accepting responses."
+            }
+
+            require(uid in meeting.invitedIds) {
+                "This user does not have a pending invitation."
+            }
+
+            val updatedInvitedIds = meeting.invitedIds - uid
+
+            val updates = getReadyUpdates(
+                invitedIds = updatedInvitedIds,
+                participantIds = meeting.participantIds,
+                startingLocations = meeting.startingLocations
+            )
+
+            transaction.update(meetingRef, updates)
+        }.await()
+
         Unit
     }
 

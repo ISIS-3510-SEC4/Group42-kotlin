@@ -115,7 +115,7 @@ class RejectionAwareStrategy(
 
         val rejectionRate = rejectionRates[candidate.placeId]
             ?.coerceIn(0.0, 1.0)
-            ?: 0.0
+            ?: 0.5
 
         return baseScore - penaltyWeight * rejectionRate
     }

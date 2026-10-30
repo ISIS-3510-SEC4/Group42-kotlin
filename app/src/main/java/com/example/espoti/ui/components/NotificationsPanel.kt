@@ -61,10 +61,13 @@ fun NotificationsPanel(
     onDeclineFriendInvite: (AppNotification.FriendInvite) -> Unit,
     onAcceptMeetingInvite: (AppNotification.MeetingInvite) -> Unit = {},
     onDeclineMeetingInvite: (AppNotification.MeetingInvite) -> Unit = {},
+    onContinueLocation: (AppNotification.LocationPending) -> Unit = {},
     // Eventual connectivity: says the list is the saved one, and why answering is disabled.
     savedDataNotice: String? = null,
     actionError: String? = null,
     actionsEnabled: Boolean = true
+
+
 ) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
         Box(
@@ -163,6 +166,10 @@ fun NotificationsPanel(
                                         onAccept = { onAcceptMeetingInvite(notification) },
                                         onDecline = { onDeclineMeetingInvite(notification) }
                                     )
+                                    is AppNotification.LocationPending -> LocationPendingCard(
+                                        notification = notification,
+                                        onContinue = { onContinueLocation(notification) }
+                                    )
                                 }
                             }
                         }
@@ -248,5 +255,63 @@ private fun InviteCard(
                 contentColor = BrandBrown
             )
         }
+    }
+}
+
+@Composable
+private fun LocationPendingCard(
+    notification: AppNotification.LocationPending,
+    onContinue: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(SurfacePeach)
+            .padding(14.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Event,
+                    contentDescription = null,
+                    tint = BrandBrown
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Text(
+                text = "Your location is pending for ${notification.title}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = BrandBrown,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        notification.dateLabel?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = BrandBrown,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        EspotiPrimaryButton(
+            text = "Add my location",
+            onClick = onContinue,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+        )
     }
 }
