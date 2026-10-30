@@ -14,6 +14,7 @@ import com.example.espoti.model.domain.Location
 import com.example.espoti.analytics.AnalyticsDependencies
 import com.example.espoti.analytics.VotingTelemetry
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 
 /**
  * Firestore-backed meetings: meetings/{id} with sub-collections votes, reviews
@@ -404,5 +405,17 @@ open class MeetingEventRepository(
         val ref = meetings.document(meetingId).collection("memories").document()
         ref.set(memory.copy(id = ref.id, date = System.currentTimeMillis())).await()
         Unit
+    }
+    open suspend fun getCachedMeetingsForUser(
+        uid: String
+    ): Result<List<MeetingEvent>> = runCatching {
+        meetings.whereArrayContains("participantIds", uid)
+            .get(Source.CACHE)
+            .await()
+            .documents
+            .mapNotNull { document ->
+                document.toObject(MeetingEvent::class.java)
+                    ?.copy(id = document.id)
+            }
     }
 }

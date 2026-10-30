@@ -11,6 +11,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
 import com.example.espoti.model.TravelEstimates
+import com.google.firebase.firestore.Source
 
 /**
  * Collection places/{id}.
@@ -29,6 +30,15 @@ open class PlaceRepository(
         runCatching {
             places.document(id)
                 .get()
+                .await()
+                .toObject(Place::class.java)
+                ?.copy(id = id)
+        }
+
+    open suspend fun getCachedPlace(id: String): Result<Place?> =
+        runCatching {
+            places.document(id)
+                .get(Source.CACHE)
                 .await()
                 .toObject(Place::class.java)
                 ?.copy(id = id)
