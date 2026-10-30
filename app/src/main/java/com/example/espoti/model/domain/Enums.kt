@@ -12,6 +12,6 @@ enum class Rating(val stars: Int) { ONE(1), TWO(2), THREE(3), FOUR(4), FIVE(5) }
 enum class PlaceCategory { RESTAURANT, CAFFE, BAR }
 
 // VOTING: created, participants still voting the place (see VotingRules).
-enum class StatusMeeting { VOTING, UPCOMING, PREVIOUS, CANCELED, PREPARING_RECOMMENDATIONS }
+enum class StatusMeeting { VOTING, UPCOMING, PREVIOUS, CANCELED, COLLECTING_LOCATIONS, PREPARING_RECOMMENDATIONS, }
 
 enum class UserType { FRIEND, ADMIN }

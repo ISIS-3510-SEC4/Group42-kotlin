@@ -44,6 +44,7 @@ import com.example.espoti.viewmodel.CreateMeetingViewModel
 import com.example.espoti.viewmodel.MeetingDetailViewModel
 import com.example.espoti.ui.screens.CreateMeetingScreen1
 import com.example.espoti.ui.screens.CreateMeetingScreen2
+import com.example.espoti.ui.screens.StartingLocationScreen
 import com.example.espoti.ui.screens.FriendsScreen
 import com.example.espoti.ui.screens.ProfileScreen
 import com.example.espoti.ui.screens.EditProfileScreen
@@ -57,6 +58,7 @@ import com.example.espoti.analytics.AnalyticsDependencies
 import com.example.espoti.data.repository.AuthRepository
 import com.example.espoti.di.AppContainer
 import com.example.espoti.ui.components.OfflineBanner
+import com.example.espoti.model.domain.StatusMeeting
 
 // ============================================================================
 // SCREEN ROUTES
@@ -104,6 +106,15 @@ sealed class Screen(
     // Create meeting is opened from any screen and returns to wherever it was opened.
     object CreateMeeting1 : Screen("create_meeting1", BottomNavItem.HOME, BackBehavior.PREVIOUS)
     object CreateMeeting2 : Screen("create_meeting2", BottomNavItem.HOME, BackBehavior.PREVIOUS)
+    object StartingLocation : Screen(
+        "starting_location/{meetingId}",
+        BottomNavItem.HOME,
+        BackBehavior.PREVIOUS
+    ) {
+        fun createRoute(meetingId: String): String {
+            return "starting_location/$meetingId"
+        }
+    }
     object MeetingDetail : Screen("meeting_detail/{meetingId}", BottomNavItem.MEETINGS) {
         fun createRoute(meetingId: String): String {
             return "meeting_detail/$meetingId"
@@ -119,7 +130,7 @@ sealed class Screen(
     companion object {
         private val all by lazy {
             listOf(
-                Welcome, Login, Register, Home, Meetings, CreateMeeting1, CreateMeeting2,
+                Welcome, Login, Register, Home, Meetings, CreateMeeting1, CreateMeeting2, StartingLocation,
                 MeetingDetail, Friends, Profile, EditProfile
             )
         }
@@ -295,20 +306,51 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                 )
             }
             composable(Screen.CreateMeeting1.route) { backStackEntry ->
-                // Scoped to this entry so CreateMeeting2 reuses the same state
-                // (see CreateMeeting2's composable below).
-                val createMeetingViewModel: CreateMeetingViewModel = viewModel(backStackEntry)
+                val createMeetingViewModel: CreateMeetingViewModel =
+                    viewModel(backStackEntry)
+
+
                 CreateMeetingScreen1(
                     viewModel = createMeetingViewModel,
                     onScheduleClick = {
-                        createMeetingViewModel.requestRecommendations()
-
-                        navController.navigate(Screen.CreateMeeting2.route) {
+                        // La creación se gestiona dentro de CreateMeetingScreen1.
+                    },
+                    onMeetingCreated = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.CreateMeeting1.route) {
+                                inclusive = true
+                            }
                             launchSingleTop = true
                         }
                     }
                 )
             }
+
+            composable(
+                route = Screen.StartingLocation.route,
+                arguments = listOf(
+                    navArgument("meetingId") { type = NavType.StringType }
+                )
+            ) { entry ->
+                val meetingId = entry.arguments?.getString("meetingId").orEmpty()
+
+                val createMeetingViewModel: CreateMeetingViewModel =
+                    viewModel(entry)
+
+                StartingLocationScreen(
+                    meetingId = meetingId,
+                    viewModel = createMeetingViewModel,
+                    onLocationsCollected = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.Home.route) {
+                                inclusive = false
+                            }
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+
             composable(Screen.CreateMeeting2.route) {
                 // Share the ViewModel owned by CreateMeeting1 (it is always
                 // right below Create 2 in the back stack).
@@ -433,13 +475,31 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
         onAcceptFriendInvite = notificationsViewModel::onAcceptFriendInvite,
         onDeclineFriendInvite = notificationsViewModel::onDeclineFriendInvite,
         // Accepting a meeting invite opens it right away so the user can vote.
+
         onAcceptMeetingInvite = { invite ->
-            notificationsViewModel.onAcceptMeetingInvite(invite) { meetingId ->
+            notificationsViewModel.onAcceptMeetingInvite(invite) { meetingId, status ->
                 showNotifications = false
-                navController.navigate(Screen.MeetingDetail.createRoute(meetingId))
+
+                if (status == StatusMeeting.COLLECTING_LOCATIONS) {
+                    navController.navigate(
+                        Screen.StartingLocation.createRoute(meetingId)
+                    )
+                } else {
+                    navController.navigate(
+                        Screen.MeetingDetail.createRoute(meetingId)
+                    )
+                }
             }
-        },
-        onDeclineMeetingInvite = notificationsViewModel::onDeclineMeetingInvite
+        }
+        ,
+        onDeclineMeetingInvite = notificationsViewModel::onDeclineMeetingInvite,
+
+        onContinueLocation = { pending ->
+            showNotifications = false
+            navController.navigate(
+                Screen.StartingLocation.createRoute(pending.id)
+            )
+        }
     )
     }
 }

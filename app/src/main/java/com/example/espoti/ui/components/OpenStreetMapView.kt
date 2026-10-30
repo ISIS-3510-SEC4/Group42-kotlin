@@ -9,6 +9,7 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+import androidx.compose.ui.draw.clipToBounds
 
 @Composable
 fun OpenStreetMapView(
@@ -18,7 +19,7 @@ fun OpenStreetMapView(
     onLocationSelected: (Double, Double) -> Unit
 ) {
     AndroidView(
-        modifier = modifier,
+        modifier = modifier.clipToBounds(),
         factory = { context ->
 
             Configuration.getInstance().userAgentValue =

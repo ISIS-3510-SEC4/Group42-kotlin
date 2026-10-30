@@ -72,12 +72,32 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material.icons.filled.HowToVote
 import java.time.ZoneId
-
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import kotlinx.coroutines.launch
+import com.example.espoti.data.location.AndroidLocationService
+import android.location.Geocoder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 
 @Composable
 fun CreateMeetingScreen1(
     onScheduleClick: () -> Unit,
-    viewModel: CreateMeetingViewModel = viewModel()
+    viewModel: CreateMeetingViewModel = viewModel(),
+    onMeetingCreated: () -> Unit
 ) {
     val whatToDo by viewModel.whatToDo
     val selectedDate by viewModel.selectedDate
@@ -90,6 +110,125 @@ fun CreateMeetingScreen1(
     val selectedFriendIds by viewModel.selectedFriendIds
     val votingDeadlineMillis by viewModel.votingDeadlineMillis
     val votingDeadlineError by viewModel.votingDeadlineError
+    val dateError by viewModel.dateError
+    val formError by viewModel.formError
+    val friendSelectionError by viewModel.friendSelectionError
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val locationService = remember(context) {
+        AndroidLocationService(context)
+    }
+
+    var isGettingLocation by remember {
+        mutableStateOf(false)
+    }
+
+    var locationError by remember {
+        mutableStateOf<String?>(null)
+    }
+    var addressQuery by remember {
+        mutableStateOf("")
+    }
+
+    var isSearchingAddress by remember {
+        mutableStateOf(false)
+    }
+
+    var addressSearchError by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var showMeetingCreatedDialog by remember {
+        mutableStateOf(false)
+    }
+
+    fun fetchCurrentLocation() {
+        scope.launch {
+            isGettingLocation = true
+            locationError = null
+
+            try {
+                val fix = locationService.currentLocation()
+
+                viewModel.onLocationSelected(
+                    fix.latitude,
+                    fix.longitude
+                )
+            } catch (e: Exception) {
+                locationError = e.message
+                    ?: "Could not obtain your current location."
+            } finally {
+                isGettingLocation = false
+            }
+        }
+    }
+    fun searchAddress() {
+        val query = addressQuery.trim()
+
+        if (query.isBlank()) {
+            addressSearchError = "Enter an address first."
+            return
+        }
+
+        scope.launch {
+            isSearchingAddress = true
+            addressSearchError = null
+
+            try {
+                val results = withContext(Dispatchers.IO) {
+                    if (!Geocoder.isPresent()) {
+                        throw IllegalStateException(
+                            "Address search is not available on this device."
+                        )
+                    }
+
+                    @Suppress("DEPRECATION")
+                    Geocoder(context, Locale.getDefault())
+                        .getFromLocationName(query, 1)
+                }
+
+                val address = results?.firstOrNull()
+
+                if (
+                    address == null ||
+                    !address.hasLatitude() ||
+                    !address.hasLongitude()
+                ) {
+                    addressSearchError =
+                        "No address found. Try another address or select it on the map."
+                } else {
+                    viewModel.onLocationSelected(
+                        address.latitude,
+                        address.longitude
+                    )
+                }
+            } catch (e: Exception) {
+                addressSearchError =
+                    "Could not search this address. Try again or select it on the map."
+            } finally {
+                isSearchingAddress = false
+            }
+        }
+    }
+
+    val locationPermissionLauncher =
+        rememberLauncherForActivityResult(
+            contract = ActivityResultContracts.RequestMultiplePermissions()
+        ) { permissions ->
+
+            val granted =
+                permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                        permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+
+            if (granted) {
+                fetchCurrentLocation()
+            } else {
+                locationError = "Location permission is required to use your current location."
+            }
+        }
+
 
     var showFriendsDialog by remember { mutableStateOf(false) }
 
@@ -164,6 +303,13 @@ fun CreateMeetingScreen1(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            if (friendSelectionError != null) {
+                Text(
+                    text = friendSelectionError!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
 
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -174,6 +320,15 @@ fun CreateMeetingScreen1(
                 label = "What are we going to do?",
                 value = whatToDo,
                 onValueChange = viewModel::onWhatToDoChange
+            )
+            Text(
+                text = "${whatToDo.length}/50",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                textAlign = TextAlign.End,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -209,17 +364,6 @@ fun CreateMeetingScreen1(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            VotingDeadlineField(
-                deadlineMillis = votingDeadlineMillis,
-                meetingDate = selectedDate,
-                errorMessage = votingDeadlineError,
-                onDeadlineSelected = viewModel::onVotingDeadlineSelected
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Spacer(modifier = Modifier.height(5.dp))
-
             Spacer(modifier = Modifier.height(14.dp))
 
             Row(
@@ -242,13 +386,85 @@ fun CreateMeetingScreen1(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Placeholder for the map from the Figma design.
+            EspotiField(
+                label = "Meeting address",
+                value = addressQuery,
+                onValueChange = {
+                    addressQuery = it
+                    addressSearchError = null
+                },
+                supportingText = addressSearchError,
+                isError = addressSearchError != null
+            )
+
+            Button(
+                onClick = { searchAddress() },
+                enabled = !isSearchingAddress,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (isSearchingAddress) {
+                        "Searching address..."
+                    } else {
+                        "Search address"
+                    })
+            }
+
+
+            Button(
+                onClick = {
+                    locationError = null
+
+                    val fineGranted =
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.ACCESS_FINE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+
+                    val coarseGranted =
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.ACCESS_COARSE_LOCATION
+                        ) == PackageManager.PERMISSION_GRANTED
+
+                    if (fineGranted || coarseGranted) {
+                        fetchCurrentLocation()
+                    } else {
+                        locationPermissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
+                },
+                enabled = !isGettingLocation,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (isGettingLocation) {
+                        "Getting your location..."
+                    } else {
+                        "Use my current location"
+                    }
+                )
+            }
+
+            if (locationError != null) {
+                Text(
+                    text = locationError!!,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(120.dp)
                     .clip(RoundedCornerShape(12.dp))
             ) {
+
 
                 OpenStreetMapView(
                     modifier = Modifier.fillMaxSize(),
@@ -271,15 +487,58 @@ fun CreateMeetingScreen1(
 
             Spacer(modifier = Modifier.height(14.dp))
 
+            formError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
+
             EspotiPrimaryButton(
                 text = "Schedule",
-                onClick = onScheduleClick,
+                onClick = {
+                    viewModel.createMeetingBeforeLocations {
+                        showMeetingCreatedDialog = true
+                    }
+                }
+                ,
                 modifier = Modifier
                     .width(130.dp)
                     .height(42.dp)
                     .align(Alignment.CenterHorizontally)
             )
         }
+    }
+    if (showMeetingCreatedDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showMeetingCreatedDialog = false
+            },
+            title = {
+                Text("¡Reunión creada!")
+            },
+            text = {
+                Text(
+                    "Tu reunión se creó correctamente. " +
+                            "Tus amigos recibirán la invitación."
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMeetingCreatedDialog = false
+                        onMeetingCreated()
+                    }
+                ) {
+                    Text("Aceptar")
+                }
+            }
+        )
     }
 
     if (showFriendsDialog) {
@@ -399,12 +658,16 @@ private fun MeetingDatePickerField(
     }
 
     if (showDialog) {
+        val minimumDate = LocalDate.now().plusDays(7)
+
         val datePickerState = rememberDatePickerState(
             initialSelectedDateMillis = selectedDate
                 ?.atStartOfDay(ZoneOffset.UTC)
                 ?.toInstant()
                 ?.toEpochMilli(),
-            selectableDates = futureDates()
+            selectableDates = futureDates(
+                firstSelectableDate = minimumDate
+            )
         )
 
         DatePickerDialog(
@@ -591,13 +854,23 @@ private fun todayUtcMillis(): Long =
 
 /** Days from today up to [lastUtcMillis] (inclusive) when given. */
 @OptIn(ExperimentalMaterial3Api::class)
-private fun futureDates(lastUtcMillis: Long? = null) = object : SelectableDates {
-    private val today = todayUtcMillis()
+private fun futureDates(
+    firstSelectableDate: LocalDate = LocalDate.now(),
+    lastUtcMillis: Long? = null
+) = object : SelectableDates {
 
-    override fun isSelectableDate(utcTimeMillis: Long) =
-        utcTimeMillis >= today && (lastUtcMillis == null || utcTimeMillis <= lastUtcMillis)
+    private val firstSelectableMillis =
+        firstSelectableDate
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
 
-    override fun isSelectableYear(year: Int) = year >= LocalDate.now().year
+    override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+        utcTimeMillis >= firstSelectableMillis &&
+                (lastUtcMillis == null || utcTimeMillis <= lastUtcMillis)
+
+    override fun isSelectableYear(year: Int): Boolean =
+        year >= firstSelectableDate.year
 }
 
 /**
