@@ -4,11 +4,22 @@ import com.example.espoti.model.domain.Friendship
 import com.example.espoti.model.domain.FriendshipStatus
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import com.google.firebase.firestore.Source
+import kotlinx.coroutines.CancellationException
+import java.security.MessageDigest
 
 /**
  * Collection friendships/{id}; each document links exactly two users.
  * `open` + lazy Firestore so ViewModel tests can subclass it without Firebase.
  */
+
+enum class FriendRequestSendOutcome {
+    SENT,
+    ALREADY_PENDING,
+    ALREADY_FRIENDS,
+    BLOCKED,
+    USER_NOT_FOUND
+}
 open class FriendshipRepository(
     dbProvider: () -> FirebaseFirestore = { FirebaseFirestore.getInstance() }
 ) {
@@ -48,6 +59,101 @@ open class FriendshipRepository(
             Friendship(ref.id, listOf(fromUid, toUid), FriendshipStatus.PENDING, System.currentTimeMillis())
         ).await()
         Unit
+    }
+    open suspend fun sendRequestSafely(
+        fromUid: String,
+        toUid: String
+    ): Result<FriendRequestSendOutcome> {
+        return try {
+            require(fromUid.isNotBlank() && toUid.isNotBlank()) {
+                "Both users are required."
+            }
+            require(fromUid != toUid) {
+                "You cannot send a request to yourself."
+            }
+
+            val database = friendships.firestore
+
+            // The same pair always uses the same document, in either direction.
+            val pairKey = listOf(fromUid, toUid)
+                .sorted()
+                .joinToString(separator = "") { "${it.length}:$it" }
+
+            val pairHash = MessageDigest.getInstance("SHA-256")
+                .digest(pairKey.toByteArray(Charsets.UTF_8))
+                .joinToString("") {
+                    (it.toInt() and 0xff).toString(16).padStart(2, '0')
+                }
+
+            val requestRef = friendships.document("pair_$pairHash")
+
+            // Include relationships created by the previous implementation.
+            // SERVER prevents making this decision from stale cached data.
+            val existingRefs = friendships
+                .whereArrayContains("userIds", fromUid)
+                .get(Source.SERVER)
+                .await()
+                .documents
+                .filter { document ->
+                    val users = document.get("userIds") as? List<*>
+                    users?.contains(toUid) == true
+                }
+                .map { it.reference }
+
+            val refsToCheck = (existingRefs + requestRef)
+                .distinctBy { it.path }
+
+            val recipientRef = database
+                .collection("users")
+                .document(toUid)
+
+            val outcome = database.runTransaction { transaction ->
+                // All reads happen before any write.
+                val recipientExists = transaction.get(recipientRef).exists()
+
+                val relationships = refsToCheck.mapNotNull { reference ->
+                    transaction.get(reference)
+                        .toObject(Friendship::class.java)
+                }
+
+                when {
+                    relationships.any {
+                        it.status == FriendshipStatus.BLOCKED
+                    } -> FriendRequestSendOutcome.BLOCKED
+
+                    !recipientExists ->
+                        FriendRequestSendOutcome.USER_NOT_FOUND
+
+                    relationships.any {
+                        it.status == FriendshipStatus.ACCEPTED
+                    } -> FriendRequestSendOutcome.ALREADY_FRIENDS
+
+                    relationships.any {
+                        it.status == FriendshipStatus.PENDING
+                    } -> FriendRequestSendOutcome.ALREADY_PENDING
+
+                    else -> {
+                        transaction.set(
+                            requestRef,
+                            Friendship(
+                                id = requestRef.id,
+                                userIds = listOf(fromUid, toUid),
+                                status = FriendshipStatus.PENDING,
+                                dateAdded = System.currentTimeMillis()
+                            )
+                        )
+
+                        FriendRequestSendOutcome.SENT
+                    }
+                }
+            }.await()
+
+            Result.success(outcome)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            Result.failure(error)
+        }
     }
 
     suspend fun updateStatus(id: String, status: FriendshipStatus): Result<Unit> = runCatching {

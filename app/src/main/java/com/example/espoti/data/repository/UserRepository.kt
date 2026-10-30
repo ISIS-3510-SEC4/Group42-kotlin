@@ -4,6 +4,7 @@ import com.example.espoti.model.domain.ActivityType
 import com.example.espoti.model.domain.User
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
+import com.google.firebase.firestore.Source
 
 /** Collection users/{uid}; the document id is the Firebase Auth uid. */
 open class UserRepository(
@@ -19,6 +20,14 @@ open class UserRepository(
     open suspend fun getUser(uid: String): Result<User?> = runCatching {
         users.document(uid).get().await().toObject(User::class.java)?.copy(id = uid)
     }
+    open suspend fun getCachedUser(uid: String): Result<User?> =
+        runCatching {
+            users.document(uid)
+                .get(Source.CACHE)
+                .await()
+                .toObject(User::class.java)
+                ?.copy(id = uid)
+        }
 
     /** Used to add friends by their share code. */
     open suspend fun findByCode(code: String): Result<User?> = runCatching {

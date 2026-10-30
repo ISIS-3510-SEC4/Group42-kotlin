@@ -21,6 +21,13 @@ import kotlinx.coroutines.launch
 import com.example.espoti.model.TransportFilters
 import com.example.espoti.model.TransportFilterCalculator
 import java.util.UUID
+import com.example.espoti.data.connectivity.ConnectivityObserver
+import com.example.espoti.di.AppContainer
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeout
 /**
  * One meeting from Firestore (route arg "meetingId"). While it is VOTING it
  * also exposes the candidate places with their vote counts, and lets the
@@ -34,7 +41,8 @@ class MeetingDetailViewModel(
     private val placeRepository: PlaceRepository = PlaceRepository(),
     private val analyticsTracker: AnalyticsTracker = AnalyticsDependencies.tracker,
     private val currentUserId: () -> String? = { AuthRepository().currentUserId },
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    connectivity: ConnectivityObserver = AppContainer.connectivity
 ) : MeetingContextViewModel(contextRepository) {
 
     private val meetingId: String? = savedStateHandle.get<String>("meetingId")
@@ -76,68 +84,190 @@ class MeetingDetailViewModel(
 
     private val _transportFilterError = mutableStateOf<String?>(null)
     val transportFilterError: State<String?> = _transportFilterError
+
+    private var loadJob: Job? = null
+    private var loadVersion = 0L
+
+    private val _savedDataNotice = mutableStateOf<String?>(null)
+    val savedDataNotice: State<String?> = _savedDataNotice
+
+    val isOnline: State<Boolean> = trackConnectivity(
+        connectivity,
+        onDisconnected = { load() },
+        onReconnected = { load() }
+    )
     init {
         load()
     }
 
+    /** Loads the meeting again on entry and when connectivity changes. */
     fun load() {
         val id = meetingId
         val uid = currentUserId()
+
         if (id == null || uid == null) {
             _isLoading.value = false
             _error.value = "Meeting not found."
             return
         }
-        _isLoading.value = true
 
-        viewModelScope.launch {
-            val now = clock()
-            meetingRepository.getMeeting(id)
-                .onSuccess { found ->
-                    if (found == null) {
-                        _error.value = "Meeting not found."
-                    } else {
-                        val decided = if (VotingRules.isVotingDone(found, found.voteList(), now)) {
-                            meetingRepository.closeVotingIfDone(id, now).getOrNull() ?: found
-                        } else found
-                        show(meetingRepository.markPreviousIfFinished(decided, now), uid, now)
-                        _error.value = null
-                    }
+        val version = ++loadVersion
+        loadJob?.cancel()
+
+        _isLoading.value = true
+        _error.value = null
+        if (!_isSavingVote.value) {
+            _voteError.value = null
+        }
+
+        loadJob = viewModelScope.launch {
+            try {
+                if (!isOnline.value) {
+                    loadCachedDetail(id, uid)
+                    return@launch
                 }
-                .onFailure { _error.value = "Couldn't load the meeting. Please try again." }
-            _isLoading.value = false
+
+                try {
+                    withTimeout(12_000L) {
+                        val found = meetingRepository
+                            .getMeeting(id)
+                            .getOrThrow()
+
+                        currentCoroutineContext().ensureActive()
+
+                        if (found == null) {
+                            _meeting.value = null
+                            _candidates.value = emptyList()
+                            _visibleCandidates.value = emptyList()
+                            _voteCounts.value = emptyMap()
+                            _selectedPlaceId.value = null
+                            _transportFilters.value = TransportFilters()
+                            _canUseTransportFilters.value = false
+                            _transportFilterError.value = null
+                            _savedDataNotice.value = null
+                            _error.value = "Meeting not found."
+                            return@withTimeout
+                        }
+
+                        val now = clock()
+
+                        val decided = if (
+                            VotingRules.isVotingDone(
+                                found,
+                                found.voteList(),
+                                now
+                            )
+                        ) {
+                            meetingRepository
+                                .closeVotingIfDone(id, now)
+                                .getOrNull()
+                                ?: found
+                        } else {
+                            found
+                        }
+
+                        currentCoroutineContext().ensureActive()
+
+                        val updated = meetingRepository
+                            .markPreviousIfFinished(decided, now)
+
+                        currentCoroutineContext().ensureActive()
+
+                        show(
+                            event = updated,
+                            uid = uid,
+                            now = now,
+                            allowRemote = true
+                        )
+                    }
+                } catch (timeout: TimeoutCancellationException) {
+                    currentCoroutineContext().ensureActive()
+                    loadCachedDetail(id, uid)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    loadCachedDetail(id, uid)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
+
+                _error.value =
+                    "Couldn't load the meeting from this device. Connect and try again."
+            } finally {
+                if (version == loadVersion) {
+                    _isLoading.value = false
+                }
+            }
         }
     }
 
-    private suspend fun show(event: MeetingEvent, uid: String, now: Long) {
-        val place = event.placeId?.let {
-            placeRepository.getPlace(it).getOrNull()
+    /** Offline reads never close voting or update the meeting in Firestore. */
+    private suspend fun loadCachedDetail(
+        id: String,
+        uid: String
+    ) {
+        val found = meetingRepository
+            .getCachedMeeting(id)
+            .getOrThrow()
+
+        currentCoroutineContext().ensureActive()
+
+        if (found == null) {
+            _error.value =
+                "This meeting isn't available on this device. Open it with internet first."
+            return
         }
 
-        val meeting = event.toUiMeeting(uid, place, now)
-        _meeting.value = meeting
+        show(
+            event = found,
+            uid = uid,
+            now = clock(),
+            allowRemote = false
+        )
+    }
 
-        if (meeting.isVoting) {
-            val origin = event.startingLocations[uid]
+    /** Builds the detail using either network reads or local Firestore reads. */
+    private suspend fun show(
+        event: MeetingEvent,
+        uid: String,
+        now: Long,
+        allowRemote: Boolean = true
+    ) {
+        val place = event.placeId?.let {
+            readPlace(it, allowRemote)
+        }
 
-            val validOrigin =
-                origin != null &&
-                        origin.latitude in -90.0..90.0 &&
-                        origin.longitude in -180.0..180.0
+        val displayedMeeting = event.toUiMeeting(uid, place, now)
 
+        val origin = event.startingLocations[uid]
+
+        val validOrigin =
+            origin != null &&
+                    origin.latitude in -90.0..90.0 &&
+                    origin.longitude in -180.0..180.0
+
+        val loadedCandidates = if (displayedMeeting.isVoting) {
+            event.candidatePlaceIds.mapNotNull { placeId ->
+                readPlace(placeId, allowRemote)?.toRecommendation()
+            }
+        } else {
+            emptyList()
+        }
+
+        currentCoroutineContext().ensureActive()
+
+        _meeting.value = displayedMeeting
+
+        if (displayedMeeting.isVoting) {
             _canUseTransportFilters.value = validOrigin
             _transportFilterError.value = null
 
             if (!validOrigin) {
                 _transportFilters.value = TransportFilters()
             }
-
-            val loadedCandidates =
-                event.candidatePlaceIds.mapNotNull { placeId ->
-                    placeRepository.getPlace(placeId)
-                        .getOrNull()
-                        ?.toRecommendation()
-                }
 
             _candidates.value = TransportFilterCalculator.withDistances(
                 candidates = loadedCandidates,
@@ -161,6 +291,37 @@ class MeetingDetailViewModel(
             _canUseTransportFilters.value = false
             _transportFilterError.value = null
         }
+
+        _savedDataNotice.value = if (!allowRemote) {
+            if (
+                displayedMeeting.isVoting &&
+                loadedCandidates.size < event.candidatePlaceIds.size
+            ) {
+                "Showing saved meeting data. Some candidate places aren't available on this device."
+            } else {
+                "Showing saved meeting data. Votes and availability may have changed."
+            }
+        } else {
+            null
+        }
+
+        _error.value = null
+    }
+
+    /** Missing cached places do not prevent the rest of the detail from loading. */
+    private suspend fun readPlace(
+        placeId: String,
+        allowRemote: Boolean
+    ): com.example.espoti.model.domain.Place? {
+        val result = if (allowRemote) {
+            placeRepository.getPlace(placeId)
+        } else {
+            placeRepository.getCachedPlace(placeId)
+        }
+
+        currentCoroutineContext().ensureActive()
+
+        return result.getOrNull()
     }
 
     private fun refreshVisibleCandidates() {
@@ -268,6 +429,12 @@ class MeetingDetailViewModel(
         if (_isSavingVote.value) return
         if (_visibleCandidates.value.none { it.placeId == placeId}) {
             _voteError.value = "Select one of the visible places."
+            return
+        }
+        // Keep the selected candidate, but require a connection to confirm the vote.
+        if (!isOnline.value) {
+            _voteError.value =
+                "You're offline. Your selection is kept on this screen. Reconnect to confirm your vote."
             return
         }
         _isSavingVote.value = true

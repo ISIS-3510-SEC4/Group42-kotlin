@@ -28,6 +28,12 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeout
 
 // ============================================================================
 // HOME VIEW MODEL
@@ -73,50 +79,154 @@ class HomeViewModel(
 
     private val placeCache = mutableMapOf<String, Place?>()
 
-    init {
-        trackConnectivity(connectivity, onReconnected = { refresh() })
-    }
+    private var refreshJob: Job? = null
+    private var refreshVersion = 0L
+
+    val isOnline: State<Boolean> = trackConnectivity(
+        connectivity,
+        onDisconnected = { refresh() },
+        onReconnected = { refresh() }
+    )
 
     /** Called every time Home is shown (and on reconnection). */
     fun refresh() {
         val uid = currentUserId() ?: return
-        if (_isLoading.value) return
+
+        val version = ++refreshVersion
+        refreshJob?.cancel()
         _isLoading.value = true
 
-        viewModelScope.launch {
-            // Independent reads: the username and the meetings load at the same time.
-            val name = async { userRepository.getUser(uid).getOrNull()?.username }
+        refreshJob = viewModelScope.launch {
+            try {
+                if (!isOnline.value) {
+                    loadCachedHome(uid)
+                    return@launch
+                }
 
-            meetingRepository.getMeetingsForUser(uid)
-                .onSuccess { events -> showMeetings(uid, events) }
-                .onFailure { _error.value = "Couldn't load your meetings. Please try again." }
+                try {
+                    withTimeout(12_000L) {
+                        val name = async {
+                            userRepository.getUser(uid).getOrNull()?.username
+                        }
 
-            name.await()?.takeIf { it.isNotBlank() }?.let { _userName.value = it }
-            _isLoading.value = false
-            _hasLoaded.value = true
+                        val events = meetingRepository
+                            .getMeetingsForUser(uid)
+                            .getOrThrow()
+
+                        currentCoroutineContext().ensureActive()
+                        showMeetings(uid, events)
+
+                        val loadedName = name.await()
+                        currentCoroutineContext().ensureActive()
+
+                        loadedName?.takeIf { it.isNotBlank() }?.let {
+                            _userName.value = it
+                        }
+                    }
+                } catch (timeout: TimeoutCancellationException) {
+                    loadCachedHome(uid)
+                    _error.value =
+                        "The update timed out. Showing available saved meetings."
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    currentCoroutineContext().ensureActive()
+                    loadCachedHome(uid)
+                    _error.value =
+                        "Couldn't refresh your meetings. Showing available saved meetings."
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                currentCoroutineContext().ensureActive()
+                _error.value =
+                    "Couldn't load saved meetings. Connect to the internet and try again."
+            } finally {
+                if (version == refreshVersion) {
+                    _isLoading.value = false
+                    _hasLoaded.value = true
+                }
+            }
         }
     }
 
-    private suspend fun showMeetings(uid: String, events: List<MeetingEvent>) {
+    private suspend fun loadCachedHome(uid: String) {
+        val name = userRepository.getCachedUser(uid)
+            .getOrNull()
+            ?.username
+
+        currentCoroutineContext().ensureActive()
+
+        name?.takeIf { it.isNotBlank() }?.let {
+            _userName.value = it
+        }
+
+        val events = meetingRepository
+            .getCachedMeetingsForUser(uid)
+            .getOrThrow()
+
+        currentCoroutineContext().ensureActive()
+        showMeetings(uid, events, allowRemote = false)
+
+        if (_nextMeetings.value.isEmpty() && _history.value.isEmpty()) {
+            _error.value =
+                "No saved meetings are available for Home. Connect to update them."
+        }
+    }
+
+    private suspend fun showMeetings(
+        uid: String,
+        events: List<MeetingEvent>,
+        allowRemote: Boolean = true
+    ) {
         val now = clock()
-        val updated = events
-            .map { closeIfDone(it, now) }
-            .map { meetingRepository.markPreviousIfFinished(it, now) }
+
+        val updated = if (allowRemote) {
+            events
+                .map { closeIfDone(it, now) }
+                .map { meetingRepository.markPreviousIfFinished(it, now) }
+        } else {
+            events
+        }
+
+        currentCoroutineContext().ensureActive()
+
         val byId = updated.associateBy { it.id }
-        // Same tabs/order as the Meetings screen; Meeting.name is the place
-        // once decided, or the activity while voting.
+
         val grouped = groupMeetings(
-            updated.map { it.toUiMeeting(uid, it.placeId?.let { id -> placeFor(id) }, now) }
+            updated.map { event ->
+                val place = event.placeId?.let { placeId ->
+                    placeFor(placeId, allowRemote)
+                }
+
+                event.toUiMeeting(uid, place, now)
+            }
         )
 
-        _nextMeetings.value = cards(
-            grouped[MeetingTab.UPCOMING].orEmpty().take(MAX_CARDS).map { byId.getValue(it.id) to it.name },
-            uid, now
+        val nextCards = cards(
+            meetings = grouped[MeetingTab.UPCOMING]
+                .orEmpty()
+                .take(MAX_CARDS)
+                .map { byId.getValue(it.id) to it.name },
+            uid = uid,
+            now = now,
+            allowRemote = allowRemote
         )
-        _history.value = cards(
-            grouped[MeetingTab.PREVIOUS].orEmpty().take(MAX_CARDS).map { byId.getValue(it.id) to it.name },
-            uid, now
+
+        val historyCards = cards(
+            meetings = grouped[MeetingTab.PREVIOUS]
+                .orEmpty()
+                .take(MAX_CARDS)
+                .map { byId.getValue(it.id) to it.name },
+            uid = uid,
+            now = now,
+            allowRemote = allowRemote
         )
+
+        currentCoroutineContext().ensureActive()
+
+        _nextMeetings.value = nextCards
+        _history.value = historyCards
         _error.value = null
     }
 
@@ -124,20 +234,37 @@ class HomeViewModel(
     private suspend fun cards(
         meetings: List<Pair<MeetingEvent, String>>,
         uid: String,
-        now: Long
+        now: Long,
+        allowRemote: Boolean = true
     ): List<HomeMeetingCard> = coroutineScope {
         meetings.map { (event, title) ->
             async {
                 val others = event.participantIds.filter { it != uid }
-                val firstName = others.firstOrNull()
-                    ?.let { userRepository.getUser(it).getOrNull()?.username }
+                val firstName = others.firstOrNull()?.let { friendUid ->
+                    val result = if (allowRemote) {
+                        userRepository.getUser(friendUid)
+                    } else {
+                        userRepository.getCachedUser(friendUid)
+                    }
+                    result.getOrNull()?.username
+                }
+                currentCoroutineContext().ensureActive()
                 HomeMeetingCard(
                     id = event.id,
                     title = title,
                     whenLabel = whenLabel(event, now),
-                    peopleLabel = peopleLabel(firstName, others.size, event.invitedIds.size),
-                    avatarCount = event.participantIds.size.coerceIn(1, MAX_AVATARS),
-                    isVoting = MeetingLifecycle.effectiveStatus(event, now, zone) == StatusMeeting.VOTING
+                    peopleLabel = peopleLabel(
+                        firstName,
+                        others.size,
+                        event.invitedIds.size
+                    ),
+                    avatarCount = event.participantIds.size
+                        .coerceIn(1, MAX_AVATARS),
+                    isVoting = MeetingLifecycle.effectiveStatus(
+                        event,
+                        now,
+                        zone
+                    ) == StatusMeeting.VOTING
                 )
             }
         }.awaitAll()
@@ -172,9 +299,19 @@ class HomeViewModel(
         return meetingRepository.closeVotingIfDone(event.id, now).getOrNull() ?: event
     }
 
-    private suspend fun placeFor(placeId: String): Place? =
-        placeCache.getOrPut(placeId) { placeRepository.getPlace(placeId).getOrNull() }
+    private suspend fun placeFor(
+        placeId: String,
+        allowRemote: Boolean = true
+    ): Place? {
+        placeCache[placeId]?.let { return it }
+        val result = if (allowRemote) { placeRepository.getPlace(placeId) }
+        else { placeRepository.getCachedPlace(placeId) }
+        currentCoroutineContext().ensureActive()
 
+        return result.getOrNull()?.also { place ->
+            placeCache[placeId] = place
+        }
+    }
     private companion object {
         const val MAX_CARDS = 5
         const val MAX_AVATARS = 3

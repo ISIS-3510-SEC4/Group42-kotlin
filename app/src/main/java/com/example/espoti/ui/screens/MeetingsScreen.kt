@@ -48,6 +48,7 @@ import com.example.espoti.ui.theme.TextCream
 import com.example.espoti.viewmodel.MeetingsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.example.espoti.ui.components.SavedDataCaption
 
 /**
  * Meetings tabs (Upcoming / Previous / Canceled) from Firestore. Meetings
@@ -69,6 +70,8 @@ fun MeetingsScreen(
     val isLoading by viewModel.isLoading
     val error by viewModel.error
     val highlightedId by viewModel.highlightedMeetingId
+    val isOnline by viewModel.isOnline
+    val isShowingSaved by viewModel.isShowingSaved
 
     // Reload every time the screen is shown (a vote may have just changed it).
     LaunchedEffect(Unit) {
@@ -99,8 +102,39 @@ fun MeetingsScreen(
                         onTabSelected = viewModel::onTabSelected
             )
             Spacer(modifier = Modifier.height(24.dp))
+            if (!isOnline || isShowingSaved) {
+                SavedDataCaption(
+                    text = "Showing meetings available on this device. " +
+                            "You can browse Previous and Canceled. " +
+                            "Connect to refresh the information.",
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+            }
+
+// Keep refresh errors visible even when saved cards are available.
+            if (error != null && allMeetings.isNotEmpty()) {
+                Text(
+                    text = error.orEmpty(),
+                    color = BrandBrown
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                EspotiPrimaryButton(
+                    text = "Retry",
+                    onClick = viewModel::refresh
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
             when {
+                (!isOnline || isShowingSaved) &&
+                        selectedTab == MeetingTab.UPCOMING -> {
+                    Text(
+                        text = "Connect to load Upcoming. " +
+                                "You can browse saved meetings in Previous and Canceled.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = BrandBrown
+                    )
+                }
                 isLoading && allMeetings.isEmpty() -> {
                     CircularProgressIndicator(
                         color = BrandBrown,
@@ -115,11 +149,31 @@ fun MeetingsScreen(
                 }
 
                 meetings.isEmpty() -> {
+                    val showingSaved = !isOnline || isShowingSaved
+
                     Text(
-                        text = when (selectedTab) {
-                            MeetingTab.UPCOMING -> "No upcoming meetings. Create one with +."
-                            MeetingTab.PREVIOUS -> "No previous meetings yet."
-                            MeetingTab.CANCELED -> "No canceled meetings."
+                        text = if (showingSaved) {
+                            when (selectedTab) {
+                                MeetingTab.PREVIOUS ->
+                                    "No previous meetings are available on this device. Connect to refresh."
+
+                                MeetingTab.CANCELED ->
+                                    "No canceled meetings are available on this device. Connect to refresh."
+
+                                MeetingTab.UPCOMING ->
+                                    "Connect to load upcoming meetings."
+                            }
+                        } else {
+                            when (selectedTab) {
+                                MeetingTab.UPCOMING ->
+                                    "No upcoming meetings. Create one with +."
+
+                                MeetingTab.PREVIOUS ->
+                                    "No previous meetings yet."
+
+                                MeetingTab.CANCELED ->
+                                    "No canceled meetings."
+                            }
                         },
                         style = MaterialTheme.typography.bodyMedium,
                         color = BrandBrown

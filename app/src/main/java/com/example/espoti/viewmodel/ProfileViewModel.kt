@@ -15,6 +15,7 @@ import com.example.espoti.di.AppContainer
 import com.example.espoti.model.domain.User
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import com.example.espoti.data.local.PendingAction
 
 /**
  * Loads the signed-in user's profile from Firestore (users/{uid}) so the
@@ -51,26 +52,38 @@ class ProfileViewModel(
     /** Called on start and every time the Profile screen is shown again (e.g. back from Edit profile). */
     fun refresh() {
         val uid = authRepository.currentUserId ?: return
+
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
             val pending = pendingActions.pendingFor(uid)
-            _hasPendingSync.value = pending.isNotEmpty()
 
-            profileStore.get(uid)?.let { _profile.value = it.withPending(pending) }
+            // Friend request records do not represent unsynced profile changes.
+            _hasPendingSync.value = pending.any {
+                it.action is PendingAction.UpdateProfile
+            }
+
+            profileStore.get(uid)?.let {
+                _profile.value = it.withPending(pending)
+            }
+
             if (!isOnline.value) return@launch
 
             userRepository.getUser(uid).onSuccess { user ->
                 if (user != null) {
                     profileStore.save(user)
+
                     // Re-read: the background sync may have sent them meanwhile.
                     val stillPending = pendingActions.pendingFor(uid)
-                    _hasPendingSync.value = stillPending.isNotEmpty()
+
+                    _hasPendingSync.value = stillPending.any {
+                        it.action is PendingAction.UpdateProfile
+                    }
+
                     _profile.value = user.withPending(stillPending)
                 }
             }
         }
     }
-
     /** Signs out of Firebase Auth and forgets this user's saved data; the caller still navigates to Welcome. */
     fun onLogout() {
         authRepository.currentUserId?.let(clearLocalData)
