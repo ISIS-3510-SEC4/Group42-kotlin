@@ -46,6 +46,7 @@ import com.example.espoti.ui.components.formatDateTime
 import com.example.espoti.ui.components.TransportFiltersPanel
 import com.example.espoti.model.TransportFilterCalculator
 import java.util.Locale
+import com.example.espoti.ui.components.SavedDataCaption
 
 /**
  * Detail of one Firestore meeting. While it is VOTING it shows the candidate
@@ -126,15 +127,37 @@ private fun VotingDetail(
     val selectedPlaceId by viewModel.selectedPlaceId
     val isSaving by viewModel.isSavingVote
     val voteError by viewModel.voteError
+    val isOnline by viewModel.isOnline
+
 
     Scaffold(
         bottomBar = {
             VoteBar(
-                canVote = selectedPlaceId != null && !isSaving,
-                showHint = selectedPlaceId == null && candidates.isNotEmpty(),
-                errorMessage = voteError,
-                onVote = { viewModel.onVoteConfirmed(onDone = onVoted) },
-                buttonText = if (meeting.hasVoted) "Update vote" else "Vote"
+                canVote = selectedPlaceId != null &&
+                        !isSaving &&
+                        !isLoading &&
+                        isOnline,
+                showHint = isOnline &&
+                        selectedPlaceId == null &&
+                        candidates.isNotEmpty(),
+                errorMessage = if (!isOnline) {
+                    if (isSaving) {
+                        "Connection lost. Your submitted vote is awaiting server confirmation."
+                    } else {
+                        "You're offline. You can browse and filter saved places. Reconnect to confirm your vote."
+                    }
+                } else {
+                    voteError
+                },
+                onVote = {
+                    viewModel.onVoteConfirmed(onDone = onVoted)
+                },
+                buttonText = when {
+                    isSaving -> "Saving..."
+                    !isOnline -> "Connect to vote"
+                    meeting.hasVoted -> "Update vote"
+                    else -> "Vote"
+                }
             )
         }
     ) { innerPadding ->
@@ -168,6 +191,7 @@ private fun VotingDetail(
             Spacer(modifier = Modifier.height(6.dp))
             VotingChip()
             Spacer(modifier = Modifier.height(10.dp))
+            MeetingDetailDataNotice(viewModel)
 
             meeting.startsAtEpochMillis?.let { start ->
                 Text(text = "Meeting: ${formatDateTime(start)}", color = BrandBrown)
@@ -276,6 +300,8 @@ private fun ConfirmedDetail(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
+                .clickable{ onBackClick()}
+                .padding(horizontal = 4.dp)
         ) {
 
             Row(
@@ -307,6 +333,7 @@ private fun ConfirmedDetail(
             }
 
             Spacer(modifier = Modifier.height(12.dp))
+            MeetingDetailDataNotice(viewModel)
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -448,6 +475,39 @@ private fun ConfirmedDetail(
                         .weight(1f)
                         .height(46.dp)
                 )
+            }
+        }
+    }
+}
+/** Explains whether the detail is showing saved data or a refresh failed. */
+@Composable
+private fun MeetingDetailDataNotice(
+    viewModel: MeetingDetailViewModel
+) {
+    val isOnline by viewModel.isOnline
+    val savedDataNotice by viewModel.savedDataNotice
+    val error by viewModel.error
+    val isLoading by viewModel.isLoading
+
+    val message = error
+        ?: savedDataNotice
+        ?: if (!isOnline) {
+            "You're offline. Reconnect to refresh this meeting and confirm a vote."
+        } else {
+            null
+        }
+
+    message?.let {
+        SavedDataCaption(
+            text = it,
+            modifier = Modifier.padding(vertical = 8.dp)
+        )
+
+        if (isOnline && !isLoading) {
+            androidx.compose.material3.TextButton(
+                onClick = viewModel::load
+            ) {
+                Text("Refresh meeting")
             }
         }
     }

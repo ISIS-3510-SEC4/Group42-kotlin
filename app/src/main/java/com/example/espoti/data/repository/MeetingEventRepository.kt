@@ -52,6 +52,17 @@ open class MeetingEventRepository(
         meetings.document(id).get().await().toObject(MeetingEvent::class.java)?.copy(id = id)
     }
 
+    /** Reads only the meeting already available on this device. */
+    open suspend fun getCachedMeeting(
+        id: String
+    ): Result<MeetingEvent?> = runCatching {
+        meetings.document(id)
+            .get(Source.CACHE)
+            .await()
+            .toObject(MeetingEvent::class.java)
+            ?.copy(id = id)
+    }
+
     /**
      * Every meeting the user takes part in, any status. One array-contains
      * query, so no composite index is needed; the caller groups by status.
