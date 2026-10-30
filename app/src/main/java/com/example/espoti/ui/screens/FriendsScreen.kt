@@ -66,6 +66,13 @@ import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.EspotiTheme
 import com.example.espoti.ui.theme.SurfacePeach
 import com.example.espoti.viewmodel.FriendsViewModel
+import androidx.compose.runtime.LaunchedEffect
+import androidx.work.WorkManager
+import com.example.espoti.data.local.FriendRequestState
+import com.example.espoti.data.local.PendingAction
+import com.example.espoti.data.local.StoredAction
+import com.example.espoti.data.sync.WorkManagerSyncScheduler
+import kotlinx.coroutines.flow.collect
 
 // ============================================================================
 // AMIGOS (Friends) SCREEN
@@ -96,6 +103,21 @@ fun FriendsScreen(
     val blockedUsers by viewModel.blockedUsers
     val savedDataNotice by viewModel.savedDataNotice
     val context = LocalContext.current
+    val friendRequests by viewModel.friendRequests
+
+    val workManager = remember(context) {
+        WorkManager.getInstance(context.applicationContext)
+    }
+
+// Refresh SQLite statuses whenever background delivery changes.
+// Collecting again when the screen opens also loads the latest results.
+    LaunchedEffect(workManager, viewModel) {
+        workManager.getWorkInfosForUniqueWorkFlow(
+            WorkManagerSyncScheduler.UNIQUE_WORK_NAME
+        ).collect {
+            viewModel.refreshFriendRequests()
+        }
+    }
     // Friend whose action sheet is open, and the action waiting for confirmation.
     var selectedFriend by remember { mutableStateOf<Friend?>(null) }
     var pendingAction by remember { mutableStateOf<FriendAction?>(null) }
@@ -221,6 +243,10 @@ fun FriendsScreen(
                     )
                 }
             }
+            SavedFriendRequests(
+                requests = friendRequests,
+                onDismiss = viewModel::dismissFriendRequestResult
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -310,6 +336,78 @@ private fun FriendsHeader(hasUnreadNotifications: Boolean, onNotificationsClick:
     }
 }
 
+
+/** Saved requests and delivery results belonging to the signed-in user. */
+@Composable
+private fun SavedFriendRequests(
+    requests: List<StoredAction>,
+    onDismiss: (Long) -> Unit
+) {
+    if (requests.isEmpty()) return
+
+    Spacer(modifier = Modifier.height(20.dp))
+
+    Text(
+        text = "Friend requests",
+        style = MaterialTheme.typography.titleMedium,
+        color = BrandBrown
+    )
+
+    requests.forEach { stored ->
+        val request =
+            stored.action as? PendingAction.SendFriendRequest
+                ?: return@forEach
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(SurfacePeach)
+                .padding(14.dp)
+        ) {
+            Text(
+                text = request.targetName,
+                style = MaterialTheme.typography.titleSmall,
+                color = BrandBrown
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = when (request.state) {
+                    FriendRequestState.PENDING ->
+                        "Saved on this device. Waiting to send when a connection is available."
+
+                    FriendRequestState.COMPLETED ->
+                        request.resultMessage
+                            ?: "Request processed."
+
+                    FriendRequestState.FAILED ->
+                        request.resultMessage
+                            ?: "Couldn't send the request. Please try again."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (
+                    request.state == FriendRequestState.FAILED
+                ) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    BrandBrown
+                }
+            )
+
+            if (request.state != FriendRequestState.PENDING) {
+                TextButton(
+                    onClick = { onDismiss(stored.id) }
+                ) {
+                    Text("Dismiss")
+                }
+            }
+        }
+    }
+}
 /**
  * Shown after a successful code search, in place of sending the request
  * right away: the user's avatar/name plus an explicit confirm/cancel step.

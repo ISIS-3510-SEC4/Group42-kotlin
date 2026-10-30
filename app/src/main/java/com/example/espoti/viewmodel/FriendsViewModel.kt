@@ -22,6 +22,14 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import com.example.espoti.analytics.AnalyticsDependencies
+import com.example.espoti.data.local.FriendRequestState
+import com.example.espoti.data.local.PendingAction
+import com.example.espoti.data.local.PendingActionStore
+import com.example.espoti.data.local.StoredAction
+import com.example.espoti.data.sync.SyncScheduler
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * Loads the signed-in user's own code and accepted friends from Firestore
@@ -38,21 +46,28 @@ import com.example.espoti.analytics.AnalyticsDependencies
  * - Eventual connectivity, "cache then network": the lists saved in SQLite are
  *   shown first, then replaced by Firestore's when online (and saved again).
  *   Offline, [savedDataNotice] says the lists come from this device, and
- *   search / send / remove / block / unblock are refused with a specific
- *   message (they need the server). Back online, everything reloads by itself.
+ *   search / remove / block / unblock require the server.
+ *   Confirmed friend requests are saved in SQLite and delivered by WorkManager
+ *   when online. Back online, the lists reload automatically.
  * - Multithreading: friends' usernames are read in parallel (async/awaitAll).
  * - Caching: [userRepository] defaults to the app-wide in-memory user cache.
  */
 class FriendsViewModel(
     private val authRepository: AuthRepository = AuthRepository(),
     private val userRepository: UserRepository = AppContainer.userRepository,
-    private val friendshipRepository: FriendshipRepository = FriendshipRepository(),
+    private val friendshipRepository: FriendshipRepository =
+        FriendshipRepository(),
     // Lazy so unit tests don't build the Firebase-backed tracker.
-    private val trackFeature: (String) -> Unit = { AnalyticsDependencies.tracker.featureUsed(feature = it) },
+    private val trackFeature: (String) -> Unit = {
+        AnalyticsDependencies.tracker.featureUsed(feature = it)
+    },
     private val friendsStore: FriendsLocalStore = AppContainer.friendsStore,
     private val profileStore: ProfileLocalStore = AppContainer.profileStore,
     connectivity: ConnectivityObserver = AppContainer.connectivity,
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val pendingActions: PendingActionStore =
+        AppContainer.pendingActions,
+    private val syncScheduler: SyncScheduler = AppContainer.syncScheduler
 ) : ViewModel() {
 
     private val _myName = mutableStateOf("")
@@ -100,14 +115,28 @@ class FriendsViewModel(
     // When the lists on screen were last saved on this device.
     private var savedAt: Long? = null
 
+    // Confirmed requests and their delivery results, saved on this device.
+    private val _friendRequests =
+        mutableStateOf<List<StoredAction>>(emptyList())
+
+    val friendRequests: State<List<StoredAction>> = _friendRequests
+
+    private var requestStatusJob: Job? = null
+
     val isOnline: State<Boolean> = trackConnectivity(
         connectivity,
-        onDisconnected = { markSavedData("You're offline.") },
-        onReconnected = { reload() }
+        onDisconnected = {
+            markSavedData("You're offline.")
+        },
+        onReconnected = {
+            reload()
+            refreshFriendRequests(reschedule = true)
+        }
     )
 
     init {
         reload()
+        refreshFriendRequests(reschedule = true)
     }
 
     /** Saved lists first, then Firestore if online. */
@@ -229,27 +258,170 @@ class FriendsViewModel(
         }
     }
 
-    /** Confirms the card shown after a successful search: sends the request for real. */
+    /**
+     * Confirms the card shown after a successful search.
+     * Saves the request before scheduling delivery, even when currently online.
+     * Only an explicit confirmation creates a queued request.
+     */
     fun onConfirmSendRequest() {
         val uid = authRepository.currentUserId ?: return
         val target = _foundUser.value ?: return
+
         if (_isSendingRequest.value) return
-        if (refuseOffline()) return
+
+        if (target.id == uid) {
+            showNotice("That's your own code.", NoticeType.ERROR)
+            return
+        }
 
         _isSendingRequest.value = true
+
         viewModelScope.launch {
-            friendshipRepository.sendRequest(uid, target.id)
-                .onSuccess {
-                    trackFeature("FRIENDS")
-                    showNotice("Friend request sent to ${target.username}.", NoticeType.INFO)
-                    _searchQuery.value = ""
-                    _foundUser.value = null
-                    // So a repeated search for this same code is caught as
-                    // "already pending" instead of allowing a second request.
-                    loadFriendships(uid)
+            var savedLocally = false
+
+            try {
+                val existing = pendingActions.pendingFor(uid).any { stored ->
+                    val request =
+                        stored.action as? PendingAction.SendFriendRequest
+
+                    request?.targetUid == target.id &&
+                            request.state == FriendRequestState.PENDING
                 }
-                .onFailure { showNotice("Something went wrong. Please try again.", NoticeType.ERROR) }
-            _isSendingRequest.value = false
+
+                currentCoroutineContext().ensureActive()
+
+                if (authRepository.currentUserId != uid) {
+                    return@launch
+                }
+
+                if (existing) {
+                    showNotice(
+                        "A request to ${target.username} is already waiting to be sent.",
+                        NoticeType.INFO
+                    )
+                    refreshFriendRequests()
+                    return@launch
+                }
+
+                pendingActions.enqueue(
+                    PendingAction.SendFriendRequest(
+                        ownerUid = uid,
+                        targetUid = target.id,
+                        targetName = target.username,
+                        createdAt = clock()
+                    )
+                )
+
+                savedLocally = true
+
+                currentCoroutineContext().ensureActive()
+
+                _searchQuery.value = ""
+                _foundUser.value = null
+
+                refreshFriendRequests()
+
+                showNotice(
+                    if (isOnline.value) {
+                        "Request saved. Sending it when the connection is available."
+                    } else {
+                        "Request saved on this device. It will be sent when you're back online."
+                    },
+                    NoticeType.INFO
+                )
+
+                syncScheduler.scheduleSync()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showNotice(
+                    if (savedLocally) {
+                        "Your request is saved. Open Friends again to retry scheduling delivery."
+                    } else {
+                        "Couldn't save your request. Please try again."
+                    },
+                    NoticeType.ERROR
+                )
+            } finally {
+                _isSendingRequest.value = false
+            }
+        }
+    }
+
+    /** Removes a delivery result from this device, not the friendship in Firestore. */
+    fun dismissFriendRequestResult(id: Long) {
+        val uid = authRepository.currentUserId ?: return
+
+        viewModelScope.launch {
+            try {
+                val stored = pendingActions.pendingFor(uid)
+                    .firstOrNull { it.id == id }
+                    ?: return@launch
+
+                val request =
+                    stored.action as? PendingAction.SendFriendRequest
+                        ?: return@launch
+
+                // Pending requests must remain available for background delivery.
+                if (request.state == FriendRequestState.PENDING) {
+                    return@launch
+                }
+
+                pendingActions.remove(id)
+                refreshFriendRequests()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showNotice(
+                    "Couldn't dismiss the request result. Please try again.",
+                    NoticeType.ERROR
+                )
+            }
+        }
+    }
+
+    /**
+     * Reads request statuses from SQLite.
+     * WorkManager notifications will call this after delivery changes.
+     * Scheduling is requested only on entry or reconnection, not on every update.
+     */
+    fun refreshFriendRequests(reschedule: Boolean = false) {
+        val uid = authRepository.currentUserId ?: return
+
+        requestStatusJob?.cancel()
+
+        requestStatusJob = viewModelScope.launch {
+            try {
+                val requests = pendingActions.pendingFor(uid).filter {
+                    it.action is PendingAction.SendFriendRequest
+                }
+
+                currentCoroutineContext().ensureActive()
+
+                if (authRepository.currentUserId != uid) {
+                    return@launch
+                }
+
+                _friendRequests.value = requests
+
+                val hasPending = requests.any {
+                    val request =
+                        it.action as PendingAction.SendFriendRequest
+
+                    request.state == FriendRequestState.PENDING
+                }
+
+                if (reschedule && hasPending) {
+                    syncScheduler.scheduleSync()
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                showNotice(
+                    "Couldn't refresh your saved request statuses.",
+                    NoticeType.ERROR
+                )
+            }
         }
     }
 
