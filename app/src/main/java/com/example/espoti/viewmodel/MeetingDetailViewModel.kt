@@ -30,6 +30,9 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
 import com.example.espoti.data.local.TransportFilterPreferences
 import kotlinx.coroutines.CoroutineScope
+import com.example.espoti.data.repository.CandidatePlacesLoader
+import kotlinx.coroutines.Dispatchers
+
 /**
  * One meeting from Firestore (route arg "meetingId"). While it is VOTING it
  * also exposes the candidate places with their vote counts, and lets the
@@ -49,7 +52,9 @@ class MeetingDetailViewModel(
         AppContainer.transportFilterPreferences,
     private val persistenceScope: CoroutineScope = AppContainer.appScope
 ) : MeetingContextViewModel(contextRepository) {
-
+    private val candidatePlacesLoader = CandidatePlacesLoader(
+        placeRepository = placeRepository
+    )
     private val meetingId: String? = savedStateHandle.get<String>("meetingId")
 
     private val _meeting = mutableStateOf<Meeting?>(null)
@@ -127,7 +132,8 @@ class MeetingDetailViewModel(
             _voteError.value = null
         }
 
-        loadJob = viewModelScope.launch {
+// UI state remains on Main; the loader switches its own work to IO.
+        loadJob = viewModelScope.launch(Dispatchers.Main.immediate) {
             try {
                 restoreTransportFilters(uid)
 
@@ -258,12 +264,20 @@ class MeetingDetailViewModel(
                     origin.latitude in -90.0..90.0 &&
                     origin.longitude in -180.0..180.0
 
-        val loadedCandidates = if (displayedMeeting.isVoting) {
-            event.candidatePlaceIds.mapNotNull { placeId ->
-                readPlace(placeId, allowRemote)?.toRecommendation()
+        val loadedCandidates = when {
+            !displayedMeeting.isVoting -> emptyList()
+
+            allowRemote -> candidatePlacesLoader.load(
+                event.candidatePlaceIds
+            )
+
+            else -> {
+                // Local cache reads preserve the existing offline behavior.
+                event.candidatePlaceIds.mapNotNull { placeId ->
+                    readPlace(placeId, allowRemote = false)
+                        ?.toRecommendation()
+                }
             }
-        } else {
-            emptyList()
         }
 
         currentCoroutineContext().ensureActive()
