@@ -43,6 +43,9 @@ import com.example.espoti.ui.components.RecommendationCard
 import com.example.espoti.ui.components.VoteBar
 import com.example.espoti.ui.components.VotingChip
 import com.example.espoti.ui.components.formatDateTime
+import com.example.espoti.ui.components.TransportFiltersPanel
+import com.example.espoti.model.TransportFilterCalculator
+import java.util.Locale
 
 /**
  * Detail of one Firestore meeting. While it is VOTING it shows the candidate
@@ -113,7 +116,12 @@ private fun VotingDetail(
     onBackClick: () -> Unit,
     onVoted: (String) -> Unit
 ) {
-    val candidates by viewModel.candidates
+    val allCandidates by viewModel.candidates
+    val candidates by viewModel.visibleCandidates
+    val filters by viewModel.transportFilters
+    val canUseFilters by viewModel.canUseTransportFilters
+    val filterError by viewModel.transportFilterError
+    val isLoading by viewModel.isLoading
     val voteCounts by viewModel.voteCounts
     val selectedPlaceId by viewModel.selectedPlaceId
     val isSaving by viewModel.isSavingVote
@@ -174,6 +182,22 @@ private fun VotingDetail(
 
             Spacer(modifier = Modifier.height(18.dp))
 
+            TransportFiltersPanel(
+                filters = filters,
+                hasStartingLocation = canUseFilters,
+                isBusy = isSaving || isLoading,
+                totalCount = allCandidates.size,
+                visibleCount = candidates.size,
+                unknownDistanceCount = allCandidates.count {
+                    it.distanceKm == null
+                },
+                error = filterError,
+                onApply = viewModel::applyTransportFilters,
+                onClear = viewModel::clearTransportFilters
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             Text(
                 text = "Vote for a place:",
                 style = MaterialTheme.typography.bodyMedium,
@@ -182,16 +206,49 @@ private fun VotingDetail(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (candidates.isEmpty()) {
-                CircularProgressIndicator(color = BrandBrown)
+            when {
+                isLoading -> {
+                    CircularProgressIndicator(color = BrandBrown)
+                }
+
+                allCandidates.isEmpty() -> {
+                    Text(
+                        text = "No candidate places are available.",
+                        color = BrandBrown
+                    )
+                }
+
+                candidates.isEmpty() -> {
+                    Text(
+                        text = "No places match these filters. " +
+                                "Try wider limits or clear the filters.",
+                        color = BrandBrown
+                    )
+                }
             }
 
             candidates.forEach { place ->
                 val votes = voteCounts[place.placeId] ?: 0
+                val distance = place.distanceKm
+                val minutes = TransportFilterCalculator.walkingMinutes(distance)
+
+                val transportText =
+                    if (distance != null && minutes != null) {
+                        String.format(
+                            Locale.US,
+                            "%.2f km · ~%d min walking",
+                            distance,
+                            minutes
+                        )
+                    } else {
+                        "Distance unavailable"
+                    }
+
+                val votesText = if (votes == 1) "1 vote" else "$votes votes"
                 RecommendationCard(
                     title = place.name,
                     rating = place.rating,
-                    subtitle = if (votes == 1) "1 vote" else "$votes votes",
+                    subtitle = "$transportText · $votesText",
                     isSelected = selectedPlaceId == place.placeId,
                     onClick = { viewModel.onPlaceSelected(place.placeId) }
                 )

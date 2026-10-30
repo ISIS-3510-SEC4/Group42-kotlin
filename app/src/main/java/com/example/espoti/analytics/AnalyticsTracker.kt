@@ -78,6 +78,35 @@ class AnalyticsTracker(
         )
     }
 
+    fun transportFilterUsed(
+        meetingId: String,
+        applicationId: String,
+        filterName: String,
+        filterValue: Number,
+        filterUnit: String,
+        resultCount: Int,
+        candidateCount: Int
+    ) {
+        trackEvent(
+            type = AnalyticsEventType.FILTER_USED,
+            meetingId = meetingId,
+            step = "TRANSPORT_FILTERS",
+            metadata = mapOf(
+                "schemaVersion" to 1,
+                "filterGroup" to "TRANSPORT",
+                "filterName" to filterName,
+                "filterValue" to filterValue,
+                "filterUnit" to filterUnit,
+                "applicationId" to applicationId,
+                "action" to "APPLY",
+                "source" to "MEETING_CANDIDATES",
+                "distanceReference" to "USER_STARTING_LOCATION",
+                "resultCount" to resultCount,
+                "candidateCount" to candidateCount
+            )
+        )
+    }
+
     /**
      * BQ "most selected meeting areas/locations": one PLACE_SELECTED per vote,
      * always tied to its meeting. popular_meeting_areas.js builds the area
