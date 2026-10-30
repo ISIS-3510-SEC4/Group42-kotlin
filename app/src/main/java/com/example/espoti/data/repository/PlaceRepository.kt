@@ -10,6 +10,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import com.example.espoti.model.TravelEstimates
 
 /**
  * Collection places/{id}.
@@ -98,26 +99,12 @@ open class PlaceRepository(
         latitude2: Double,
         longitude2: Double
     ): Double {
-        val earthRadiusKm = 6371.0
-
-        val lat1 = Math.toRadians(latitude1)
-        val lat2 = Math.toRadians(latitude2)
-        val deltaLat = Math.toRadians(latitude2 - latitude1)
-        val deltaLon = Math.toRadians(longitude2 - longitude1)
-
-        val a = sin(deltaLat / 2).let { sinLat ->
-            sinLat * sinLat
-        } + cos(lat1) * cos(lat2) *
-                sin(deltaLon / 2).let { sinLon ->
-                    sinLon * sinLon
-                }
-
-        val safeA = a.coerceIn(0.0, 1.0)
-
-        return earthRadiusKm * 2 * atan2(
-            sqrt(safeA),
-            sqrt(1.0 - safeA)
-        )
+        return TravelEstimates.distanceMeters(
+            latitude1 = latitude1,
+            longitude1 = longitude1,
+            latitude2 = latitude2,
+            longitude2 = longitude2
+        ) / 1000.0
     }
 
     open suspend fun savePlace(place: Place): Result<String> =

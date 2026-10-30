@@ -38,20 +38,14 @@ object MeetingContextCalculator {
         require(meetingLongitude in -180.0..180.0)
 
         // Haversine: distancia en línea recta, en metros.
-        val lat1 = Math.toRadians(fix.latitude)
-        val lat2 = Math.toRadians(meetingLatitude)
-        val deltaLat = lat2 - lat1
-        val deltaLon = Math.toRadians(meetingLongitude - fix.longitude)
+        val distance = TravelEstimates.distanceMeters(
+            latitude1 = fix.latitude,
+            longitude1 = fix.longitude,
+            latitude2 = meetingLatitude,
+            longitude2 = meetingLongitude
+        )
 
-        val a = sin(deltaLat / 2).pow(2) +
-                cos(lat1) * cos(lat2) * sin(deltaLon / 2).pow(2)
-
-        val distance = 6_371_000.0 * 2 *
-                asin(sqrt(a.coerceIn(0.0, 1.0)))
-
-        // Estimación a pie:
-        // 80 metros/minuto y 30% adicional por posibles desvíos.
-        val walkingMinutes = ceil(distance * 1.3 / 80.0).toInt()
+        val walkingMinutes = TravelEstimates.walkingMinutes(distance)
 
         // Se exige buena precisión y que incluso el margen de error
         // quede dentro del radio de llegada.
