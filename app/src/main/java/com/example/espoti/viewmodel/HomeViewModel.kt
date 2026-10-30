@@ -155,16 +155,18 @@ class HomeViewModel(
             .getOrNull()
             ?.username
 
+        currentCoroutineContext().ensureActive()
+
+        name?.takeIf { it.isNotBlank() }?.let {
+            _userName.value = it
+        }
+
         val events = meetingRepository
             .getCachedMeetingsForUser(uid)
             .getOrThrow()
 
         currentCoroutineContext().ensureActive()
         showMeetings(uid, events, allowRemote = false)
-
-        name?.takeIf { it.isNotBlank() }?.let {
-            _userName.value = it
-        }
 
         if (_nextMeetings.value.isEmpty() && _history.value.isEmpty()) {
             _error.value =

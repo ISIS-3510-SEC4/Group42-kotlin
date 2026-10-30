@@ -136,17 +136,31 @@ class HomeViewModelTest {
 
     @Test
     fun loadFailure_showsError() {
-        val failing = object : MeetingEventRepository(dbProvider = { error("no Firestore in tests") }) {
-            override suspend fun getMeetingsForUser(uid: String): Result<List<MeetingEvent>> =
-                Result.failure(IllegalStateException("offline"))
+        val failing = object : MeetingEventRepository(
+            dbProvider = { error("no Firestore in tests") }
+        ) {
+            override suspend fun getMeetingsForUser(
+                uid: String
+            ): Result<List<MeetingEvent>> =
+                Result.failure(IllegalStateException("network unavailable"))
+
+            override suspend fun getCachedMeetingsForUser(
+                uid: String
+            ): Result<List<MeetingEvent>> =
+                Result.failure(IllegalStateException("cache unavailable"))
         }
+
         val failingVm = homeViewModel(failing)
         failingVm.refresh()
 
-        assertEquals("Couldn't load your meetings. Please try again.", failingVm.error.value)
+        assertEquals(
+            "Couldn't load saved meetings. Connect to the internet and try again.",
+            failingVm.error.value
+        )
         assertTrue(failingVm.nextMeetings.value.isEmpty())
+        assertTrue(failingVm.history.value.isEmpty())
         assertTrue(failingVm.hasLoaded.value)
-        // The greeting still loads: it doesn't depend on the meetings.
+        assertFalse(failingVm.isLoading.value)
         assertEquals("ana", failingVm.userName.value)
     }
 

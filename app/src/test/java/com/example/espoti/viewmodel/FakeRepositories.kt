@@ -111,8 +111,14 @@ class FakeFriendshipRepository(
 class FakeUserRepository(
     users: List<User> = emptyList()
 ) : UserRepository(dbProvider = noFirestore) {
+
     private val byId = users.associateBy { it.id }
-    override suspend fun getUser(uid: String) = Result.success(byId[uid])
+
+    override suspend fun getUser(uid: String): Result<User?> =
+        Result.success(byId[uid])
+
+    override suspend fun getCachedUser(uid: String): Result<User?> =
+        Result.success(byId[uid])
 }
 
 class FakePlaceRepository(
