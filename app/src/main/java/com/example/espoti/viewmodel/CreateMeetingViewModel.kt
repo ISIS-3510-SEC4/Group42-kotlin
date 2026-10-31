@@ -36,6 +36,11 @@ import com.example.espoti.data.repository.PlaceRepository
 import com.example.espoti.model.domain.Place
 import com.example.espoti.model.domain.PlaceCategory
 import com.example.espoti.model.domain.Rating
+import com.example.espoti.di.AppContainer
+import com.example.espoti.data.connectivity.ConnectivityObserver
+import com.example.espoti.data.local.PendingAction
+import com.example.espoti.data.local.PendingActionStore
+import com.example.espoti.data.sync.SyncScheduler
 /**
  * State of the create-meeting flow. It is shared by CreateMeeting1 and
  * CreateMeeting2 (both get the same instance from navigation), so what the
@@ -59,7 +64,16 @@ class CreateMeetingViewModel(
     private val friendshipRepository: FriendshipRepository = FriendshipRepository(),
     private val userRepository: UserRepository = UserRepository(),
     private val placeRepository: PlaceRepository = PlaceRepository(),
-    private val clock: () -> Long = System::currentTimeMillis
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val connectivityObserver: ConnectivityObserver =
+        AppContainer.connectivity,
+
+    private val pendingActionStore: PendingActionStore =
+        AppContainer.pendingActions,
+
+    private val syncScheduler: SyncScheduler =
+        AppContainer.syncScheduler
+
 
 ) : ViewModel() {
 
@@ -92,6 +106,8 @@ class CreateMeetingViewModel(
 
     private val _saveMeetingError = mutableStateOf<String?>(null)
     val saveMeetingError: State<String?> = _saveMeetingError
+    private val _saveMeetingMessage = mutableStateOf<String?>(null)
+    val saveMeetingMessage: State<String?> = _saveMeetingMessage
 
     private val _whatToDo = mutableStateOf("")
     val whatToDo: State<String> = _whatToDo
@@ -137,6 +153,10 @@ class CreateMeetingViewModel(
 
     private val _startingLocationError = mutableStateOf<String?>(null)
     val startingLocationError: State<String?> = _startingLocationError
+
+    private val _startingLocationSavedOffline = mutableStateOf(false)
+    val startingLocationSavedOffline: State<Boolean> =
+        _startingLocationSavedOffline
 
     private val _allStartingLocationsCollected = mutableStateOf(false)
     val allStartingLocationsCollected: State<Boolean> =
@@ -289,6 +309,7 @@ class CreateMeetingViewModel(
      * Creates the meeting in Firestore before collecting participants'
      * starting locations or loading recommendations.
      */
+
     fun createMeetingBeforeLocations(onDone: (String) -> Unit) {
         if (_isSavingMeeting.value) return
 
@@ -344,10 +365,50 @@ class CreateMeetingViewModel(
         _saveMeetingError.value = null
 
         viewModelScope.launch {
+            _saveMeetingMessage.value = null
+
+            // OFFLINE: guardar la reunión localmente para sincronizar después.
+            if (!connectivityObserver.isOnline.value) {
+                try {
+                    val pendingMeeting = meeting.copy(
+                        id = UUID.randomUUID().toString()
+                    )
+
+                    pendingActionStore.enqueue(
+                        PendingAction.CreateMeeting(
+                            ownerUid = uid,
+                            meeting = pendingMeeting,
+                            createdAt = now
+                        )
+                    )
+
+                    activeMeetingId = pendingMeeting.id
+
+                    _saveMeetingMessage.value =
+                        "Meeting saved offline. It will be created when you're back online."
+
+                    _isSavingMeeting.value = false
+
+                    syncScheduler.scheduleSync()
+
+                    onDone(pendingMeeting.id)
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+
+                    _isSavingMeeting.value = false
+                    _saveMeetingError.value =
+                        "Couldn't save the meeting locally. Please try again."
+                }
+
+                return@launch
+            }
+
             meetingRepository.createMeeting(meeting).fold(
                 onSuccess = { meetingId ->
                     activeMeetingId = meetingId
                     _isSavingMeeting.value = false
+                    _saveMeetingError.value = null
+
                     onDone(meetingId)
                 },
                 onFailure = { error ->
@@ -360,6 +421,7 @@ class CreateMeetingViewModel(
             )
         }
     }
+
 
     fun addManualPlace(
         name: String,

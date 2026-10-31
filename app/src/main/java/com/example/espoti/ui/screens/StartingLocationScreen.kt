@@ -49,6 +49,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import com.example.espoti.di.AppContainer
 
 private data class AddressSearchResult(
     val label: String,
@@ -172,6 +173,12 @@ fun StartingLocationScreen(
                 Button(
                     onClick = {
                         val query = addressQuery.trim()
+
+                        if (!AppContainer.connectivity.isOnline.value) {
+                            searchError =
+                                "Address search is unavailable offline. Please connect to the internet and try again."
+                            return@Button
+                        }
 
                         if (query.isBlank()) {
                             searchError = "Enter an address to search."
