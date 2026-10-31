@@ -7,11 +7,14 @@ import com.example.espoti.data.local.StoredAction
 import com.example.espoti.data.repository.FriendRequestSendOutcome
 import com.example.espoti.data.repository.FriendshipRepository
 import com.example.espoti.data.repository.UserRepository
+import com.example.espoti.data.repository.MeetingEventRepository
+import com.example.espoti.data.repository.MeetingPreparationService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
+
 
 /**
  * Sends the offline changes of one user to Firestore, oldest first. Kept apart
@@ -32,6 +35,8 @@ class PendingActionSync(
     private val userRepository: UserRepository,
     private val maxAttempts: Int = MAX_ATTEMPTS,
     private val timeoutMillis: Long = TIMEOUT_MILLIS,
+    private val meetingRepository: MeetingEventRepository = MeetingEventRepository(),
+    private val meetingPreparationService: MeetingPreparationService,
     private val friendshipRepository: FriendshipRepository =
         FriendshipRepository()
 ) {
@@ -71,6 +76,120 @@ class PendingActionSync(
                         if (!finished) {
                             retryLater = true
                         }
+                    }
+                }
+                is PendingAction.CreateMeeting -> {
+                    val result = try {
+                        withTimeout(timeoutMillis) {
+                            meetingRepository.createMeeting(action.meeting)
+                        }
+                    } catch (e: TimeoutCancellationException) {
+                        null
+                    }
+
+                    currentCoroutineContext().ensureActive()
+
+                    if (result?.isSuccess == true) {
+                        // Firestore confirmed the meeting creation.
+                        store.remove(stored.id)
+                    } else {
+                        // Keep the meeting pending. Never discard it
+                        // just because it exceeded maxAttempts.
+                        store.recordFailure(stored.id)
+                        retryLater = true
+                    }
+                }
+                is PendingAction.SubmitStartingLocation -> {
+                    val result = try {
+                        withTimeout(timeoutMillis) {
+                            meetingRepository.saveStartingLocation(
+                                meetingId = action.meetingId,
+                                uid = action.ownerUid,
+                                location = action.location
+                            )
+                        }
+                    } catch (timeout: TimeoutCancellationException) {
+                        null
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        Result.failure(error)
+                    }
+
+                    currentCoroutineContext().ensureActive()
+
+                    if (result?.isSuccess == true) {
+                        val allCollected = result.getOrThrow()
+
+                        // The location has been confirmed by Firestore.
+                        // It must not be submitted again.
+                        store.remove(stored.id)
+
+                        if (allCollected) {
+                            val preparationResult = try {
+                                withTimeout(timeoutMillis) {
+                                    meetingPreparationService.prepareRecommendations(
+                                        action.meetingId
+                                    )
+                                }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (error: Exception) {
+                                Result.failure(error)
+                            }
+
+                            if (preparationResult.isFailure) {
+                                retryLater = true
+                            }
+                        }
+                    } else {
+                        store.recordFailure(stored.id)
+                        retryLater = true
+                    }
+                }
+
+                is PendingAction.CastVote -> {
+                    val result = try {
+                        withTimeout(timeoutMillis) {
+                            meetingRepository.castVote(
+                                meetingId = action.meetingId,
+                                uid = action.ownerUid,
+                                placeId = action.placeId
+                            )
+                        }
+                    } catch (timeout: TimeoutCancellationException) {
+                        null
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        null
+                    }
+
+                    currentCoroutineContext().ensureActive()
+
+                    if (result?.isSuccess == true) {
+                        // Firestore confirmed the vote.
+                        store.remove(stored.id)
+
+                        // Try to close voting if this was the last required vote.
+                        try {
+                            withTimeout(timeoutMillis) {
+                                meetingRepository.closeVotingIfDone(
+                                    action.meetingId,
+                                    System.currentTimeMillis()
+                                )
+                            }
+                        } catch (timeout: TimeoutCancellationException) {
+                            // The vote is already confirmed.
+                            // A later meeting load can check whether voting should close.
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (error: Exception) {
+                            // Do not resend an already-confirmed vote.
+                        }
+                    } else {
+                        store.recordFailure(stored.id)
+                        retryLater = true
                     }
                 }
             }

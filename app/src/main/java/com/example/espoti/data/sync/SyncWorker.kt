@@ -13,6 +13,10 @@ import com.example.espoti.data.repository.AuthRepository
 import com.example.espoti.data.repository.UserRepository
 import com.example.espoti.di.AppContainer
 import java.util.concurrent.TimeUnit
+import com.example.espoti.data.repository.MeetingEventRepository
+import com.example.espoti.data.repository.PlaceRepository
+import com.example.espoti.data.repository.MeetingPreparationService
+
 
 // ============================================================================
 // BACKGROUND SYNC (eventual connectivity + multithreading)
@@ -71,7 +75,19 @@ class SyncWorker(
     override suspend fun doWork(): Result {
         val uid = AuthRepository().currentUserId ?: return Result.success()
         // The plain (uncached) repository: this is a write to Firestore.
-        val sync = PendingActionSync(AppContainer.pendingActions, UserRepository())
+        val meetingRepository = MeetingEventRepository()
+
+        val meetingPreparationService = MeetingPreparationService(
+            meetingRepository = meetingRepository,
+            placeRepository = PlaceRepository()
+        )
+
+        val sync = PendingActionSync(
+            store = AppContainer.pendingActions,
+            userRepository = UserRepository(),
+            meetingRepository = meetingRepository,
+            meetingPreparationService = meetingPreparationService
+        )
         return if (sync.syncFor(uid)) Result.success() else Result.retry()
     }
 }

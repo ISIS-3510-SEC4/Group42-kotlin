@@ -32,11 +32,16 @@ import com.example.espoti.data.local.TransportFilterPreferences
 import kotlinx.coroutines.CoroutineScope
 import com.example.espoti.data.repository.CandidatePlacesLoader
 import kotlinx.coroutines.Dispatchers
-
+import com.example.espoti.data.local.PendingAction
+import com.example.espoti.data.local.PendingActionStore
+import com.example.espoti.data.sync.SyncScheduler
 import com.example.espoti.model.domain.Place
 import com.example.espoti.model.domain.Location
 import com.example.espoti.model.domain.PlaceCategory
 import com.example.espoti.model.domain.Rating
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
 /**
  * One meeting from Firestore (route arg "meetingId"). While it is VOTING it
  * also exposes the candidate places with their vote counts, and lets the
@@ -51,6 +56,8 @@ class MeetingDetailViewModel(
     private val analyticsTracker: AnalyticsTracker = AnalyticsDependencies.tracker,
     private val currentUserId: () -> String? = { AuthRepository().currentUserId },
     private val clock: () -> Long = System::currentTimeMillis,
+    private val pendingActionStore: PendingActionStore = AppContainer.pendingActions,
+    private val syncScheduler: SyncScheduler = AppContainer.syncScheduler,
     connectivity: ConnectivityObserver = AppContainer.connectivity,
     private val filterPreferences: TransportFilterPreferences =
         AppContainer.transportFilterPreferences,
@@ -113,6 +120,8 @@ class MeetingDetailViewModel(
     private var filterPreferenceRestoreError: String? = null
     private var loadJob: Job? = null
     private var loadVersion = 0L
+    private val _voteMessage = MutableStateFlow<String?>(null)
+    val voteMessage = _voteMessage.asStateFlow()
 
     private val _savedDataNotice = mutableStateOf<String?>(null)
     val savedDataNotice: State<String?> = _savedDataNotice
@@ -571,40 +580,73 @@ class MeetingDetailViewModel(
         val id = meetingId ?: return
         val uid = currentUserId() ?: return
         val placeId = _selectedPlaceId.value ?: return
+
         if (_isSavingVote.value) return
-        if (_visibleCandidates.value.none { it.placeId == placeId}) {
+
+        if (_visibleCandidates.value.none { it.placeId == placeId }) {
             _voteError.value = "Select one of the visible places."
             return
         }
-        // Keep the selected candidate, but require a connection to confirm the vote.
-        if (!isOnline.value) {
-            _voteError.value =
-                "You're offline. Your selection is kept on this screen. Reconnect to confirm your vote."
-            return
-        }
+
         _isSavingVote.value = true
         _voteError.value = null
+        _voteMessage.value = null
 
         viewModelScope.launch {
+
+            if (!isOnline.value) {
+                try {
+                    pendingActionStore.enqueue(
+                        PendingAction.CastVote(
+                            ownerUid = uid,
+                            meetingId = id,
+                            placeId = placeId,
+                            createdAt = clock()
+                        )
+                    )
+                    syncScheduler.scheduleSync()
+
+                    _voteMessage.value =
+                        "Vote saved locally. It will be submitted when you're back online."
+
+                } catch (error: Exception) {
+                    if (error is CancellationException) throw error
+
+                    _voteError.value =
+                        "Couldn't save your vote locally. Please try again."
+                } finally {
+                    _isSavingVote.value = false
+                }
+
+                return@launch
+            }
+
+
             meetingRepository.castVote(id, uid, placeId).fold(
                 onSuccess = {
                     meetingRepository.closeVotingIfDone(id, clock())
+
                     if (!placeId.startsWith("custom_")) {
-                        _candidates.value.firstOrNull { it.placeId == placeId }?.let { place ->
-                            analyticsTracker.placeSelected(
-                                place,
-                                meetingId = id,
-                                source = "MEETING_VOTE"
-                            )
-                        }
+                        _candidates.value
+                            .firstOrNull { it.placeId == placeId }
+                            ?.let { place ->
+                                analyticsTracker.placeSelected(
+                                    place,
+                                    meetingId = id,
+                                    source = "MEETING_VOTE"
+                                )
+                            }
                     }
+
                     _isSavingVote.value = false
                     onDone(id)
                 },
                 onFailure = { error ->
                     if (error is CancellationException) throw error
+
                     _isSavingVote.value = false
-                    _voteError.value = "Couldn't save your vote. Please try again."
+                    _voteError.value =
+                        "Couldn't save your vote. Please try again."
                 }
             )
         }

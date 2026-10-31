@@ -90,8 +90,7 @@ import com.example.espoti.data.location.AndroidLocationService
 import android.location.Geocoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.TextButton
+import com.example.espoti.di.AppContainer
 
 @Composable
 fun CreateMeetingScreen1(
@@ -113,6 +112,7 @@ fun CreateMeetingScreen1(
     val dateError by viewModel.dateError
     val formError by viewModel.formError
     val friendSelectionError by viewModel.friendSelectionError
+    val saveMeetingMessage by viewModel.saveMeetingMessage
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -166,6 +166,12 @@ fun CreateMeetingScreen1(
     }
     fun searchAddress() {
         val query = addressQuery.trim()
+
+        if (!AppContainer.connectivity.isOnline.value) {
+            addressSearchError =
+                "Address search is unavailable offline. Please connect to the internet and try again."
+            return
+        }
 
         if (query.isBlank()) {
             addressSearchError = "Enter an address first."
@@ -515,30 +521,43 @@ fun CreateMeetingScreen1(
         }
     }
     if (showMeetingCreatedDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                showMeetingCreatedDialog = false
-            },
-            title = {
-                Text("¡Reunión creada!")
-            },
-            text = {
-                Text(
-                    "Tu reunión se creó correctamente. " +
-                            "Tus amigos recibirán la invitación."
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showMeetingCreatedDialog = false
-                        onMeetingCreated()
+        if (showMeetingCreatedDialog) {
+            val wasSavedOffline = saveMeetingMessage != null
+
+            AlertDialog(
+                onDismissRequest = {
+                    showMeetingCreatedDialog = false
+                },
+                title = {
+                    Text(
+                        if (wasSavedOffline) {
+                            "Meeting saved offline"
+                        } else {
+                            "¡Reunión creada!"
+                        }
+                    )
+                },
+                text = {
+                    Text(
+                        if (wasSavedOffline) {
+                            saveMeetingMessage!!
+                        } else {
+                            "Tu reunión se creó correctamente. Tus amigos recibirán la invitación."
+                        }
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showMeetingCreatedDialog = false
+                            onMeetingCreated()
+                        }
+                    ) {
+                        Text("Aceptar")
                     }
-                ) {
-                    Text("Aceptar")
                 }
-            }
-        )
+            )
+        }
     }
 
     if (showFriendsDialog) {

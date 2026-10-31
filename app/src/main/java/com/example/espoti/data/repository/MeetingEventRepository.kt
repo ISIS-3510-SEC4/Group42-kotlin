@@ -56,8 +56,15 @@ open class MeetingEventRepository(
         )
     }
 
-    open suspend fun createMeeting(meeting: MeetingEvent): Result<String> = runCatching {
-        val ref = meetings.document()
+    open suspend fun createMeeting(
+        meeting: MeetingEvent
+    ): Result<String> = runCatching {
+        val ref = if (meeting.id.isBlank()) {
+            meetings.document()
+        } else {
+            meetings.document(meeting.id)
+        }
+
         ref.set(meeting.copy(id = ref.id)).await()
         ref.id
     }

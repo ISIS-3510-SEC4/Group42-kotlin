@@ -61,7 +61,7 @@ import com.example.espoti.ui.components.OpenStreetMapView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.OutlinedButton
-
+import androidx.compose.runtime.collectAsState
 
 
 /**
@@ -143,10 +143,12 @@ private fun VotingDetail(
     val selectedPlaceId by viewModel.selectedPlaceId
     val isSaving by viewModel.isSavingVote
     val voteError by viewModel.voteError
+    val voteMessage by viewModel.voteMessage.collectAsState()
     val isOnline by viewModel.isOnline
     val isAddingManualPlace by viewModel.isAddingManualPlace
     val manualPlaceError by viewModel.manualPlaceError
     val manualPlaceMessage by viewModel.manualPlaceMessage
+
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -176,6 +178,12 @@ private fun VotingDetail(
     val isCreator by viewModel.isCreator
 
     fun searchAddress() {
+
+        if (!isOnline) {
+            searchError = "Address search is unavailable offline. Reconnect to search."
+            return
+        }
+
         val query = addressQuery.trim()
 
         if (query.isBlank()) {
@@ -267,26 +275,17 @@ private fun VotingDetail(
                 VoteBar(
                     canVote = selectedPlaceId != null &&
                             !isSaving &&
-                            !isLoading &&
-                            isOnline,
+                            !isLoading,
                     showHint = isOnline &&
                             selectedPlaceId == null &&
                             candidates.isNotEmpty(),
-                    errorMessage = if (!isOnline) {
-                        if (isSaving) {
-                            "Connection lost. Your submitted vote is awaiting server confirmation."
-                        } else {
-                            "You're offline. You can browse and filter saved places. Reconnect to confirm your vote."
-                        }
-                    } else {
-                        voteError
-                    },
+                    errorMessage = voteError,
                     onVote = {
                         viewModel.onVoteConfirmed(onDone = onVoted)
                     },
                     buttonText = when {
                         isSaving -> "Saving..."
-                        !isOnline -> "Connect to vote"
+                        !isOnline -> "Save vote offline"
                         meeting.hasVoted -> "Update vote"
                         else -> "Vote"
                     }
@@ -325,6 +324,14 @@ private fun VotingDetail(
             VotingChip()
             Spacer(modifier = Modifier.height(10.dp))
             MeetingDetailDataNotice(viewModel)
+            voteMessage?.let { message ->
+                Text(
+                    text = message,
+                    color = BrandBrown,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            }
 
             meeting.startsAtEpochMillis?.let { start ->
                 Text(text = "Meeting: ${formatDateTime(start)}", color = BrandBrown)
@@ -438,6 +445,7 @@ private fun VotingDetail(
                     selectedCity = ""
 
                     // Reverse geocoding: obtain the address from the map coordinates.
+                    if(isOnline){
                     scope.launch {
                         try {
                             val address = withContext(Dispatchers.IO) {
@@ -462,6 +470,7 @@ private fun VotingDetail(
                         } catch (_: Exception) {
                             // The selected coordinates remain valid if reverse geocoding fails.
                         }
+                    }
                     }
                 }
             )
