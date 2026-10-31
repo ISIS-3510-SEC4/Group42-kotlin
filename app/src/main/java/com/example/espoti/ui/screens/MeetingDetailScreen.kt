@@ -15,11 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,6 +48,21 @@ import com.example.espoti.ui.components.TransportFiltersPanel
 import com.example.espoti.model.TransportFilterCalculator
 import java.util.Locale
 import com.example.espoti.ui.components.SavedDataCaption
+import android.location.Geocoder
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import com.example.espoti.ui.components.OpenStreetMapView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import androidx.compose.material3.OutlinedButton
+
+
 
 /**
  * Detail of one Firestore meeting. While it is VOTING it shows the candidate
@@ -134,9 +144,86 @@ private fun VotingDetail(
     val isSaving by viewModel.isSavingVote
     val voteError by viewModel.voteError
     val isOnline by viewModel.isOnline
-    val isCreator by viewModel.isCreator
+    val isAddingManualPlace by viewModel.isAddingManualPlace
+    val manualPlaceError by viewModel.manualPlaceError
+    val manualPlaceMessage by viewModel.manualPlaceMessage
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    var placeName by remember { mutableStateOf("") }
+    var addressQuery by remember { mutableStateOf("") }
+
+    var selectedLatitude by remember {
+        mutableStateOf<Double?>(null)
+    }
+    var selectedLongitude by remember {
+        mutableStateOf<Double?>(null)
+    }
+
+    var selectedAddress by remember { mutableStateOf("") }
+    var selectedCity by remember { mutableStateOf("") }
+
+    var searchResults by remember {
+        mutableStateOf<List<ManualPlaceSearchResult>>(emptyList())
+    }
+
+    var isSearching by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+
     var showChooseDialog by remember { mutableStateOf(false) }
     val selectedName = candidates.firstOrNull { it.placeId == selectedPlaceId }?.name
+    val isCreator by viewModel.isCreator
+
+    fun searchAddress() {
+        val query = addressQuery.trim()
+
+        if (query.isBlank()) {
+            searchError = "Enter an address to search."
+            return
+        }
+
+        scope.launch {
+            isSearching = true
+            searchError = null
+            searchResults = emptyList()
+
+            try {
+                val results = withContext(Dispatchers.IO) {
+                    val geocoder = Geocoder(context, Locale.getDefault())
+
+                    @Suppress("DEPRECATION")
+                    val addresses = geocoder.getFromLocationName(query, 5)
+
+                    addresses.orEmpty().mapNotNull { address ->
+                        if (!address.hasLatitude() || !address.hasLongitude()) {
+                            null
+                        } else {
+                            ManualPlaceSearchResult(
+                                label = address.getAddressLine(0) ?: query,
+                                latitude = address.latitude,
+                                longitude = address.longitude,
+                                cityName = address.locality
+                                    ?: address.subAdminArea
+                                    ?: address.adminArea
+                                    ?: ""
+                            )
+                        }
+                    }
+                }
+
+                searchResults = results
+
+                if (results.isEmpty()) {
+                    searchError = "No addresses found."
+                }
+            } catch (e: Exception) {
+                searchError = "Couldn't search this address. Try again."
+            } finally {
+                isSearching = false
+            }
+        }
+    }
 
     // Organizer only: confirm before skipping the group voting.
     if (showChooseDialog && selectedName != null) {
@@ -269,6 +356,186 @@ private fun VotingDetail(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
+                text = "Add your own place",
+                style = MaterialTheme.typography.titleMedium,
+                color = BrandBrown
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            OutlinedTextField(
+                value = placeName,
+                onValueChange = { placeName = it },
+                label = { Text("Place name") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !isAddingManualPlace
+            )
+
+            OutlinedTextField(
+                value = addressQuery,
+                onValueChange = { addressQuery = it },
+                label = { Text("Search an address") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                enabled = !isAddingManualPlace
+            )
+
+            Button(
+                onClick = {
+                    searchAddress()
+                },
+                enabled = !isSearching && !isAddingManualPlace && isOnline,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(if (isSearching) "Searching..." else "Search address")
+            }
+
+            searchError?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            searchResults.forEach { result ->
+                TextButton(
+                    onClick = {
+                        selectedLatitude = result.latitude
+                        selectedLongitude = result.longitude
+                        selectedAddress = result.label
+                        selectedCity = result.cityName
+                        addressQuery = result.label
+                        searchResults = emptyList()
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = result.label,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text(
+                text = "Or select a location on the map",
+                color = BrandBrown,
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+            OpenStreetMapView(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(250.dp),
+                selectedLatitude = selectedLatitude,
+                selectedLongitude = selectedLongitude,
+                onLocationSelected = { latitude, longitude ->
+                    selectedLatitude = latitude
+                    selectedLongitude = longitude
+                    selectedAddress = "Selected location ($latitude, $longitude)"
+                    selectedCity = ""
+
+                    // Reverse geocoding: obtain the address from the map coordinates.
+                    scope.launch {
+                        try {
+                            val address = withContext(Dispatchers.IO) {
+                                val geocoder = Geocoder(context, Locale.getDefault())
+
+                                @Suppress("DEPRECATION")
+                                geocoder.getFromLocation(latitude, longitude, 1)
+                                    ?.firstOrNull()
+                            }
+
+                            if (address != null) {
+                                selectedAddress =
+                                    address.getAddressLine(0) ?: selectedAddress
+
+                                selectedCity = address.locality
+                                    ?: address.subAdminArea
+                                            ?: address.adminArea
+                                            ?: ""
+
+                                addressQuery = selectedAddress
+                            }
+                        } catch (_: Exception) {
+                            // The selected coordinates remain valid if reverse geocoding fails.
+                        }
+                    }
+                }
+            )
+
+            if (selectedLatitude != null && selectedLongitude != null) {
+                Text(
+                    text = "Selected: $selectedAddress",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = BrandBrown
+                )
+            }
+
+            manualPlaceError?.let {
+                Text(
+                    text = it,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+
+            manualPlaceMessage?.let {
+                Text(
+                    text = it,
+                    color = BrandBrown
+                )
+            }
+
+            Button(
+                onClick = {
+                    val latitude = selectedLatitude ?: return@Button
+                    val longitude = selectedLongitude ?: return@Button
+
+                    viewModel.addManualPlace(
+                        name = placeName.trim(),
+                        latitude = latitude,
+                        longitude = longitude,
+                        address = selectedAddress,
+                        cityName = selectedCity
+                    )
+                },
+                enabled = placeName.isNotBlank() &&
+                        selectedLatitude != null &&
+                        selectedLongitude != null &&
+                        !isAddingManualPlace &&
+                        isOnline,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isAddingManualPlace) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    viewModel.trackFeatureUsed("MAP_SEARCH")
+                } else {
+                    Text("Add place")
+                }
+            }
+
+            LaunchedEffect(manualPlaceMessage) {
+                if (manualPlaceMessage != null) {
+                    placeName = ""
+                    addressQuery = ""
+                    selectedLatitude = null
+                    selectedLongitude = null
+                    selectedAddress = ""
+                    selectedCity = ""
+                    searchResults = emptyList()
+                    searchError = null
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            Text(
                 text = "Vote for a place:",
                 style = MaterialTheme.typography.bodyMedium,
                 color = BrandBrown
@@ -320,13 +587,23 @@ private fun VotingDetail(
                     rating = place.rating,
                     subtitle = "$transportText · $votesText",
                     isSelected = selectedPlaceId == place.placeId,
-                    onClick = { viewModel.onPlaceSelected(place.placeId) }
+                    onClick = {
+                        viewModel.trackFeatureUsed("LOCATION_LIST")
+                        viewModel.onPlaceSelected(place.placeId)
+                    }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
         }
     }
 }
+
+private data class ManualPlaceSearchResult(
+    val label: String,
+    val latitude: Double,
+    val longitude: Double,
+    val cityName: String
+)
 
 /** Decided meeting: place, travel status and check-in (the original detail). */
 @Composable

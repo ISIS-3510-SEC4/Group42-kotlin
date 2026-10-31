@@ -390,6 +390,10 @@ class FriendsViewModel(
 
                 savedLocally = true
 
+                AnalyticsDependencies.tracker.featureUsed(
+                    feature = "FRIEND_REQUEST_SENT"
+                )
+
                 currentCoroutineContext().ensureActive()
 
 // The confirmed request is already in SQLite; its form draft can be cleared.

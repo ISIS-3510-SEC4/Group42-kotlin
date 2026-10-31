@@ -33,6 +33,9 @@ import java.util.UUID
 import java.time.LocalDate
 import java.time.LocalTime
 import com.example.espoti.data.repository.PlaceRepository
+import com.example.espoti.model.domain.Place
+import com.example.espoti.model.domain.PlaceCategory
+import com.example.espoti.model.domain.Rating
 /**
  * State of the create-meeting flow. It is shared by CreateMeeting1 and
  * CreateMeeting2 (both get the same instance from navigation), so what the
@@ -159,6 +162,9 @@ class CreateMeetingViewModel(
 
     private val _candidatesReady = mutableStateOf(false)
     val candidatesReady: State<Boolean> = _candidatesReady
+
+    private val _manualPlaces = mutableStateOf<List<Place>>(emptyList())
+    val manualPlaces: State<List<Place>> = _manualPlaces
 
     init {
         loadFriends()
@@ -355,6 +361,49 @@ class CreateMeetingViewModel(
         }
     }
 
+    fun addManualPlace(
+        name: String,
+        latitude: Double,
+        longitude: Double,
+        address: String,
+        cityName: String,
+        category: PlaceCategory = PlaceCategory.RESTAURANT
+    ) {
+        if (name.isBlank()) return
+
+        val customPlace = Place(
+            id = "custom_${UUID.randomUUID()}",
+            name = name,
+            rating = Rating.THREE,
+            distance = 0.0,
+            placeImg = "",
+            category = category,
+            location = Location(
+                latitude = latitude,
+                longitude = longitude,
+                address = address,
+                cityName = cityName
+            )
+        )
+
+        _manualPlaces.value = _manualPlaces.value + customPlace
+    }
+
+    fun onManualPlaceSelected(place: Place) {
+        selectedRecommendation = null
+        _selectedPlaceId.value = place.id
+    }
+
+    fun removeManualPlace(placeId: String) {
+        _manualPlaces.value = _manualPlaces.value.filterNot {
+            it.id == placeId
+        }
+
+        if (_selectedPlaceId.value == placeId) {
+            _selectedPlaceId.value = null
+        }
+    }
+
 
     /**
      * Called when the creator taps Vote. Creates meetings/{id} in VOTING with
@@ -374,7 +423,17 @@ class CreateMeetingViewModel(
             return
         }
         if (_isSavingMeeting.value) return
-        val place = selectedRecommendation ?: return
+        val selectedId = _selectedPlaceId.value ?: return
+
+        val selectedRecommendation = selectedRecommendation
+
+        val selectedManualPlace = _manualPlaces.value.firstOrNull {
+            it.id == selectedId
+        }
+
+        if (selectedRecommendation == null && selectedManualPlace == null) {
+            return
+        }
         val uid = currentUserId() ?: run {
             _saveMeetingError.value = "You need to be signed in to create a meeting."
             return
@@ -384,10 +443,16 @@ class CreateMeetingViewModel(
         _saveMeetingError.value = null
 
         val now = clock()
+        val recommendationIds = _recommendationState.value
+            .recommendations
+            .take(MAX_CANDIDATES)
+            .map { it.placeId }
+
+        val manualPlaceIds = _manualPlaces.value.map { it.id }
+
         val candidates = (
-            _recommendationState.value.recommendations.take(MAX_CANDIDATES).map { it.placeId } +
-                place.placeId
-            ).distinct()
+                recommendationIds + manualPlaceIds + selectedId
+                ).distinct()
         val meeting = MeetingEvent(
             creatorId = uid,
             participantIds = listOf(uid),
@@ -402,27 +467,34 @@ class CreateMeetingViewModel(
         )
 
         viewModelScope.launch {
-            meetingRepository.createMeeting(meeting).fold(
+            meetingRepository.createMeetingWithCustomPlaces(
+                meeting = meeting,
+                customPlaces = _manualPlaces.value
+            ).fold(
                 onSuccess = { meetingId ->
                     activeMeetingId = meetingId
                     flowCompleted = true
                     // If the vote fails the meeting still exists: the creator
                     // sees "Tap to vote" in Upcoming and can vote from there.
-                    meetingRepository.castVote(meetingId, uid, place.placeId).onSuccess {
+                    meetingRepository.castVote(meetingId, uid, selectedId).onSuccess {
                         meetingRepository.closeVotingIfDone(meetingId, now)
-                        analyticsTracker.placeSelected(
-                            place = place,
-                            meetingId = meetingId,
-                            source = recommendationRepository.source,
-                            metadata = mapOf(
-                                "requestId" to _recommendationState.value.requestId,
-                                "activity" to _whatToDo.value.ifBlank { null },
-                                "invitedCount" to meeting.invitedIds.size
+                        selectedRecommendation?.let { recommendation ->
+                            analyticsTracker.placeSelected(
+                                place = recommendation,
+                                meetingId = meetingId,
+                                source = recommendationRepository.source,
+                                metadata = mapOf(
+                                    "requestId" to _recommendationState.value.requestId,
+                                    "activity" to _whatToDo.value.ifBlank { null },
+                                    "invitedCount" to meeting.invitedIds.size
+                                )
                             )
-                        )
-                        trackRejectedRecommendations(place)
+
+                            trackRejectedRecommendations(recommendation)
+                        }
                     }
                     _isSavingMeeting.value = false
+                    _manualPlaces.value = emptyList()
                     onDone(meetingId)
                 },
                 onFailure = { error ->
