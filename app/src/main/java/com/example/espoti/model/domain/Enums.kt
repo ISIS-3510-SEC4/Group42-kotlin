@@ -15,3 +15,7 @@ enum class PlaceCategory { RESTAURANT, CAFFE, BAR }
 enum class StatusMeeting { VOTING, UPCOMING, PREVIOUS, CANCELED, COLLECTING_LOCATIONS, PREPARING_RECOMMENDATIONS, }
 
 enum class UserType { FRIEND, ADMIN }
+
+// How a meeting's place was decided: by the group voting (VotingRules) or by
+// the organizer choosing it for everybody (MeetingEventRepository.chooseDirectly).
+enum class DecisionMethod { VOTING, DIRECT }

@@ -230,7 +230,8 @@ class AnalyticsTracker(
             AnalyticsEventType.VOTE_SUCCEEDED,
             AnalyticsEventType.VOTE_FAILED,
             AnalyticsEventType.VOTE_CANCELLED,
-            AnalyticsEventType.VOTE_ATTEMPTED->
+            AnalyticsEventType.VOTE_ATTEMPTED,
+            AnalyticsEventType.MEETING_PLACE_DECIDED ->
                 meetingEventFactory
         }
     }

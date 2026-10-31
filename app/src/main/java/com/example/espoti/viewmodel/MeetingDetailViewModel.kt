@@ -33,6 +33,10 @@ import kotlinx.coroutines.CoroutineScope
 import com.example.espoti.data.repository.CandidatePlacesLoader
 import kotlinx.coroutines.Dispatchers
 
+import com.example.espoti.model.domain.Place
+import com.example.espoti.model.domain.Location
+import com.example.espoti.model.domain.PlaceCategory
+import com.example.espoti.model.domain.Rating
 /**
  * One meeting from Firestore (route arg "meetingId"). While it is VOTING it
  * also exposes the candidate places with their vote counts, and lets the
@@ -82,6 +86,16 @@ class MeetingDetailViewModel(
 
     private val _voteError = mutableStateOf<String?>(null)
     val voteError: State<String?> = _voteError
+
+    private val _isAddingManualPlace = mutableStateOf(false)
+    val isAddingManualPlace: State<Boolean> = _isAddingManualPlace
+
+    private val _manualPlaceError = mutableStateOf<String?>(null)
+    val manualPlaceError: State<String?> = _manualPlaceError
+
+    private val _manualPlaceMessage = mutableStateOf<String?>(null)
+    val manualPlaceMessage: State<String?> = _manualPlaceMessage
+
     private val _transportFilters = mutableStateOf(TransportFilters())
     val transportFilters: State<TransportFilters> = _transportFilters
 
@@ -102,6 +116,10 @@ class MeetingDetailViewModel(
 
     private val _savedDataNotice = mutableStateOf<String?>(null)
     val savedDataNotice: State<String?> = _savedDataNotice
+
+    // The organizer can skip the group voting and choose the place directly.
+    private val _isCreator = mutableStateOf(false)
+    val isCreator: State<Boolean> = _isCreator
 
     val isOnline: State<Boolean> = trackConnectivity(
         connectivity,
@@ -252,7 +270,7 @@ class MeetingDetailViewModel(
         allowRemote: Boolean = true
     ) {
         val place = event.placeId?.let {
-            readPlace(it, allowRemote)
+            readPlace(event.id, it, allowRemote)
         }
 
         val displayedMeeting = event.toUiMeeting(uid, place, now)
@@ -274,7 +292,7 @@ class MeetingDetailViewModel(
             else -> {
                 // Local cache reads preserve the existing offline behavior.
                 event.candidatePlaceIds.mapNotNull { placeId ->
-                    readPlace(placeId, allowRemote = false)
+                    readPlace(event.id, placeId, allowRemote = false)
                         ?.toRecommendation()
                 }
             }
@@ -283,6 +301,7 @@ class MeetingDetailViewModel(
         currentCoroutineContext().ensureActive()
 
         _meeting.value = displayedMeeting
+        _isCreator.value = event.creatorId == uid
 
         if (displayedMeeting.isVoting) {
             _canUseTransportFilters.value = validOrigin
@@ -333,13 +352,23 @@ class MeetingDetailViewModel(
 
     /** Missing cached places do not prevent the rest of the detail from loading. */
     private suspend fun readPlace(
+        meetingId: String,
         placeId: String,
         allowRemote: Boolean
     ): com.example.espoti.model.domain.Place? {
-        val result = if (allowRemote) {
-            placeRepository.getPlace(placeId)
+
+        val result = if (placeId.startsWith("custom_")) {
+            if (allowRemote) {
+                meetingRepository.getCustomPlace(meetingId, placeId)
+            } else {
+                meetingRepository.getCachedCustomPlace(meetingId, placeId)
+            }
         } else {
-            placeRepository.getCachedPlace(placeId)
+            if (allowRemote) {
+                placeRepository.getPlace(placeId)
+            } else {
+                placeRepository.getCachedPlace(placeId)
+            }
         }
 
         currentCoroutineContext().ensureActive()
@@ -432,6 +461,98 @@ class MeetingDetailViewModel(
     fun clearTransportFilters() {
         applyTransportFilters(TransportFilters())
     }
+
+    /**
+     * Adds a manually selected place to the current meeting's voting candidates.
+     * Custom places are stored only inside the meeting's customPlaces subcollection.
+     */
+    fun addManualPlace(
+        name: String,
+        latitude: Double,
+        longitude: Double,
+        address: String,
+        cityName: String,
+        category: PlaceCategory = PlaceCategory.RESTAURANT
+    ) {
+        val id = meetingId
+        val uid = currentUserId()
+
+        // Basic validation
+        if (name.isBlank()) {
+            _manualPlaceError.value = "Enter a name for the place."
+            return
+        }
+
+        if (id == null || uid == null) {
+            _manualPlaceError.value = "Couldn't identify the current meeting or user."
+            return
+        }
+
+        if (_meeting.value?.isVoting != true) {
+            _manualPlaceError.value = "This meeting is not accepting new places."
+            return
+        }
+
+        if (!isOnline.value) {
+            _manualPlaceError.value = "Connect to the internet to add a place."
+            return
+        }
+
+        if (_isAddingManualPlace.value) return
+
+        if (
+            latitude !in -90.0..90.0 ||
+            longitude !in -180.0..180.0
+        ) {
+            _manualPlaceError.value = "Select a valid location."
+            return
+        }
+
+        _isAddingManualPlace.value = true
+        _manualPlaceError.value = null
+        _manualPlaceMessage.value = null
+
+        val customPlace = Place(
+            id = "custom_${UUID.randomUUID()}",
+            name = name.trim(),
+            rating = Rating.THREE,
+            distance = 0.0,
+            placeImg = "",
+            category = category,
+            location = Location(
+                latitude = latitude,
+                longitude = longitude,
+                address = address,
+                cityName = cityName
+            )
+        )
+
+        viewModelScope.launch {
+            meetingRepository.addCustomPlaceToVoting(
+                meetingId = id,
+                uid = uid,
+                place = customPlace
+            ).fold(
+                onSuccess = {
+                    _manualPlaceMessage.value = "Place added to the voting candidates."
+                    _isAddingManualPlace.value = false
+
+                    // Reload the meeting and its complete candidate list.
+                    load()
+                },
+                onFailure = { error ->
+                    _isAddingManualPlace.value = false
+                    _manualPlaceError.value =
+                        error.message ?: "Couldn't add this place. Please try again."
+                }
+            )
+        }
+    }
+
+    fun trackFeatureUsed(feature: String) {
+        analyticsTracker.featureUsed(feature = feature)
+    }
+
     fun onPlaceSelected(placeId: String) {
         if (_isSavingVote.value) return
 
@@ -468,8 +589,14 @@ class MeetingDetailViewModel(
             meetingRepository.castVote(id, uid, placeId).fold(
                 onSuccess = {
                     meetingRepository.closeVotingIfDone(id, clock())
-                    _candidates.value.firstOrNull { it.placeId == placeId }?.let { place ->
-                        analyticsTracker.placeSelected(place, meetingId = id, source = "MEETING_VOTE")
+                    if (!placeId.startsWith("custom_")) {
+                        _candidates.value.firstOrNull { it.placeId == placeId }?.let { place ->
+                            analyticsTracker.placeSelected(
+                                place,
+                                meetingId = id,
+                                source = "MEETING_VOTE"
+                            )
+                        }
                     }
                     _isSavingVote.value = false
                     onDone(id)
@@ -478,6 +605,51 @@ class MeetingDetailViewModel(
                     if (error is CancellationException) throw error
                     _isSavingVote.value = false
                     _voteError.value = "Couldn't save your vote. Please try again."
+                }
+            )
+        }
+    }
+
+    /**
+     * Organizer only: chooses the selected candidate for the whole group and
+     * ends the voting (MeetingEventRepository.chooseDirectly, decisionMethod
+     * DIRECT). Same guards as [onVoteConfirmed]; [onDone] gets the meeting id.
+     */
+    fun onChooseDirectly(onDone: (String) -> Unit) {
+        val id = meetingId ?: return
+        val uid = currentUserId() ?: return
+        val placeId = _selectedPlaceId.value ?: return
+        if (_isSavingVote.value) return
+        if (!_isCreator.value) {
+            _voteError.value = "Only the organizer can choose the place for the group."
+            return
+        }
+        if (_visibleCandidates.value.none { it.placeId == placeId }) {
+            _voteError.value = "Select one of the visible places."
+            return
+        }
+        if (!isOnline.value) {
+            _voteError.value =
+                "You're offline. Your selection is kept on this screen. Reconnect to choose the place."
+            return
+        }
+        _isSavingVote.value = true
+        _voteError.value = null
+
+        viewModelScope.launch {
+            meetingRepository.chooseDirectly(id, uid, placeId, clock()).fold(
+                onSuccess = {
+                    _candidates.value.firstOrNull { it.placeId == placeId }?.let { place ->
+                        analyticsTracker.placeSelected(place, meetingId = id, source = "ORGANIZER_DIRECT")
+                    }
+                    _isSavingVote.value = false
+                    onDone(id)
+                },
+                onFailure = { error ->
+                    if (error is CancellationException) throw error
+                    _isSavingVote.value = false
+                    _voteError.value = (error as? IllegalArgumentException)?.message
+                        ?: "Couldn't choose the place. Please try again."
                 }
             )
         }
