@@ -28,6 +28,7 @@ class FakeMeetingEventRepository(
 
     val meetings = initial.associateBy { it.id }.toMutableMap()
     val closeCalls = mutableListOf<String>()
+    val customPlacesByMeeting = mutableMapOf<String, List<Place>>()
     private var nextId = 1
 
     override suspend fun createMeeting(meeting: MeetingEvent): Result<String> {
@@ -35,6 +36,17 @@ class FakeMeetingEventRepository(
         meetings[id] = meeting.copy(id = id)
         return Result.success(id)
     }
+    /**
+     * Simulates creating a meeting with its custom places without Firebase.
+     * Existing vote tests can also call this with an empty custom-place list.
+     */
+    override suspend fun createMeetingWithCustomPlaces(
+        meeting: MeetingEvent,
+        customPlaces: List<Place>
+    ): Result<String> =
+        createMeeting(meeting).onSuccess { meetingId ->
+            customPlacesByMeeting[meetingId] = customPlaces.toList()
+        }
 
     override suspend fun getMeeting(id: String) = Result.success(meetings[id])
 

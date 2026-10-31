@@ -17,6 +17,7 @@ import com.example.espoti.analytics.PlaceDecisionTelemetry
 import com.example.espoti.model.domain.DecisionMethod
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
+import com.example.espoti.model.domain.Place
 
 /**
  * Firestore-backed meetings: meetings/{id} with sub-collections votes, reviews
@@ -59,6 +60,149 @@ open class MeetingEventRepository(
         val ref = meetings.document()
         ref.set(meeting.copy(id = ref.id)).await()
         ref.id
+    }
+
+    /**
+     * Creates a meeting and its custom places in one atomic batch.
+     *
+     * Custom places are stored exclusively in:
+     * meetings/{meetingId}/customPlaces/{placeId}
+     *
+     * They are never added to the global places collection.
+     */
+    open suspend fun createMeetingWithCustomPlaces(
+        meeting: MeetingEvent,
+        customPlaces: List<Place>
+    ): Result<String> = runCatching {
+
+        val customPlaceIds = customPlaces.map { it.id }
+
+        require(customPlaceIds.all { it.startsWith("custom_") }) {
+            "Custom place IDs must start with custom_."
+        }
+
+        require(customPlaceIds.distinct().size == customPlaceIds.size) {
+            "Custom place IDs must be unique."
+        }
+
+        require(meeting.candidatePlaceIds.containsAll(customPlaceIds)) {
+            "Every custom place must be included in the meeting candidates."
+        }
+
+        val meetingRef = meetings.document()
+        val meetingId = meetingRef.id
+
+        val batch = db.batch()
+
+        // 1. Save the meeting.
+        batch.set(
+            meetingRef,
+            meeting.copy(id = meetingId)
+        )
+
+        // 2. Save each custom place inside the meeting.
+        customPlaces.forEach { place ->
+            val customPlaceRef = meetingRef
+                .collection("customPlaces")
+                .document(place.id)
+
+            batch.set(customPlaceRef, place)
+        }
+
+        // 3. Commit everything together.
+        batch.commit().await()
+
+        meetingId
+    }
+
+
+    /**
+     * Adds a custom place to an existing meeting while voting is active.
+     *
+     * The place is saved inside the meeting's customPlaces subcollection,
+     * and its ID is added to candidatePlaceIds atomically.
+     */
+    open suspend fun addCustomPlaceToVoting(
+        meetingId: String,
+        uid: String,
+        place: Place
+    ): Result<Unit> = runCatching {
+
+        require(place.id.startsWith("custom_")) {
+            "Custom place IDs must start with custom_."
+        }
+
+        val meetingRef = meetings.document(meetingId)
+        val customPlaceRef = meetingRef
+            .collection("customPlaces")
+            .document(place.id)
+
+        db.runTransaction { transaction ->
+
+            // Read the meeting before performing any writes.
+            val snapshot = transaction.get(meetingRef)
+
+            val meeting = snapshot.toObject(MeetingEvent::class.java)
+                ?: throw IllegalStateException("Meeting not found.")
+
+            // Only participants can add candidates.
+            require(uid in meeting.participantIds) {
+                "Only meeting participants can add places."
+            }
+
+            // Custom places can only be added while voting is active.
+            require(meeting.status == StatusMeeting.VOTING) {
+                "This meeting is not accepting new candidates."
+            }
+
+            // Save the custom place inside this meeting.
+            transaction.set(customPlaceRef, place)
+
+            // Add its ID to the shared candidate list.
+            transaction.update(
+                meetingRef,
+                "candidatePlaceIds",
+                FieldValue.arrayUnion(place.id)
+            )
+
+        }.await()
+
+        Unit
+    }
+
+
+    /**
+     * Reads a custom place belonging to a specific meeting.
+     */
+    open suspend fun getCustomPlace(
+        meetingId: String,
+        placeId: String
+    ): Result<Place?> = runCatching {
+
+        meetings.document(meetingId)
+            .collection("customPlaces")
+            .document(placeId)
+            .get()
+            .await()
+            .toObject(Place::class.java)
+            ?.copy(id = placeId)
+    }
+
+    /**
+     * Reads a custom place only from the local Firestore cache.
+     */
+    open suspend fun getCachedCustomPlace(
+        meetingId: String,
+        placeId: String
+    ): Result<Place?> = runCatching {
+
+        meetings.document(meetingId)
+            .collection("customPlaces")
+            .document(placeId)
+            .get(Source.CACHE)
+            .await()
+            .toObject(Place::class.java)
+            ?.copy(id = placeId)
     }
 
     open suspend fun getMeeting(id: String): Result<MeetingEvent?> = runCatching {
