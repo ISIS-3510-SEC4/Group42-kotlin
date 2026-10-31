@@ -17,6 +17,7 @@ enum class AnalyticsEventType {
     VOTE_SUCCEEDED,
     VOTE_FAILED,
     VOTE_CANCELLED,
+    MEETING_PLACE_DECIDED,
 }
 
 enum class PlatformType {

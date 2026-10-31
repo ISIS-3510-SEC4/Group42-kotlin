@@ -103,6 +103,10 @@ class MeetingDetailViewModel(
     private val _savedDataNotice = mutableStateOf<String?>(null)
     val savedDataNotice: State<String?> = _savedDataNotice
 
+    // The organizer can skip the group voting and choose the place directly.
+    private val _isCreator = mutableStateOf(false)
+    val isCreator: State<Boolean> = _isCreator
+
     val isOnline: State<Boolean> = trackConnectivity(
         connectivity,
         onDisconnected = { load() },
@@ -283,6 +287,7 @@ class MeetingDetailViewModel(
         currentCoroutineContext().ensureActive()
 
         _meeting.value = displayedMeeting
+        _isCreator.value = event.creatorId == uid
 
         if (displayedMeeting.isVoting) {
             _canUseTransportFilters.value = validOrigin
@@ -478,6 +483,51 @@ class MeetingDetailViewModel(
                     if (error is CancellationException) throw error
                     _isSavingVote.value = false
                     _voteError.value = "Couldn't save your vote. Please try again."
+                }
+            )
+        }
+    }
+
+    /**
+     * Organizer only: chooses the selected candidate for the whole group and
+     * ends the voting (MeetingEventRepository.chooseDirectly, decisionMethod
+     * DIRECT). Same guards as [onVoteConfirmed]; [onDone] gets the meeting id.
+     */
+    fun onChooseDirectly(onDone: (String) -> Unit) {
+        val id = meetingId ?: return
+        val uid = currentUserId() ?: return
+        val placeId = _selectedPlaceId.value ?: return
+        if (_isSavingVote.value) return
+        if (!_isCreator.value) {
+            _voteError.value = "Only the organizer can choose the place for the group."
+            return
+        }
+        if (_visibleCandidates.value.none { it.placeId == placeId }) {
+            _voteError.value = "Select one of the visible places."
+            return
+        }
+        if (!isOnline.value) {
+            _voteError.value =
+                "You're offline. Your selection is kept on this screen. Reconnect to choose the place."
+            return
+        }
+        _isSavingVote.value = true
+        _voteError.value = null
+
+        viewModelScope.launch {
+            meetingRepository.chooseDirectly(id, uid, placeId, clock()).fold(
+                onSuccess = {
+                    _candidates.value.firstOrNull { it.placeId == placeId }?.let { place ->
+                        analyticsTracker.placeSelected(place, meetingId = id, source = "ORGANIZER_DIRECT")
+                    }
+                    _isSavingVote.value = false
+                    onDone(id)
+                },
+                onFailure = { error ->
+                    if (error is CancellationException) throw error
+                    _isSavingVote.value = false
+                    _voteError.value = (error as? IllegalArgumentException)?.message
+                        ?: "Couldn't choose the place. Please try again."
                 }
             )
         }

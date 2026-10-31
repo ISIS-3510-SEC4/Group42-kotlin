@@ -87,7 +87,9 @@ data class MeetingEvent(
     val createdAt: Long = 0L,
     // uid -> voted placeId. Mirrors votes/{uid} so the closing transaction can
     // read every vote from this single document (transactions can't query).
-    val votes: Map<String, String> = emptyMap()
+    val votes: Map<String, String> = emptyMap(),
+    // Set when the place is decided; null while voting and on older meetings.
+    val decisionMethod: DecisionMethod? = null
 ) {
     /** [votes] as Vote objects, the shape VotingRules works with. */
     fun voteList(): List<Vote> = votes.map { (uid, placeId) ->

@@ -4,6 +4,7 @@ import com.example.espoti.data.repository.FriendshipRepository
 import com.example.espoti.data.repository.MeetingEventRepository
 import com.example.espoti.data.repository.PlaceRepository
 import com.example.espoti.data.repository.UserRepository
+import com.example.espoti.model.domain.DecisionMethod
 import com.example.espoti.model.domain.Friendship
 import com.example.espoti.model.domain.FriendshipStatus
 import com.example.espoti.model.domain.MeetingEvent
@@ -58,6 +59,27 @@ class FakeMeetingEventRepository(
         )
         meetings[meetingId] = closed
         return Result.success(closed)
+    }
+
+    /** Same rules as the real chooseDirectly (creator, VOTING, candidate). */
+    override suspend fun chooseDirectly(
+        meetingId: String,
+        uid: String,
+        placeId: String,
+        now: Long
+    ): Result<MeetingEvent> = runCatching {
+        val meeting = meetings[meetingId] ?: error("Meeting not found.")
+        require(meeting.creatorId == uid) { "Only the organizer can choose the place for the group." }
+        require(meeting.status == StatusMeeting.VOTING && meeting.votingDeadline !in 1..now) {
+            "The voting is already closed."
+        }
+        require(placeId in meeting.candidatePlaceIds) { "Choose one of the candidate places." }
+        meeting.copy(
+            status = StatusMeeting.UPCOMING,
+            placeId = placeId,
+            invitedIds = emptyList(),
+            decisionMethod = DecisionMethod.DIRECT
+        ).also { meetings[meetingId] = it }
     }
 
     val statusUpdates = mutableListOf<Pair<String, StatusMeeting>>()

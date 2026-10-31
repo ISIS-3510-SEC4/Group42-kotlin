@@ -13,7 +13,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -128,37 +134,77 @@ private fun VotingDetail(
     val isSaving by viewModel.isSavingVote
     val voteError by viewModel.voteError
     val isOnline by viewModel.isOnline
+    val isCreator by viewModel.isCreator
+    var showChooseDialog by remember { mutableStateOf(false) }
+    val selectedName = candidates.firstOrNull { it.placeId == selectedPlaceId }?.name
 
+    // Organizer only: confirm before skipping the group voting.
+    if (showChooseDialog && selectedName != null) {
+        AlertDialog(
+            onDismissRequest = { showChooseDialog = false },
+            title = { Text("Choose for the group?") },
+            text = {
+                Text("$selectedName will be the place for everyone. Voting ends now and the other votes won't count.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showChooseDialog = false
+                    viewModel.onChooseDirectly(onDone = onVoted)
+                }) { Text("Choose", color = BrandOrange) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showChooseDialog = false }) {
+                    Text("Cancel", color = BrandBrown)
+                }
+            }
+        )
+    }
 
     Scaffold(
         bottomBar = {
-            VoteBar(
-                canVote = selectedPlaceId != null &&
-                        !isSaving &&
-                        !isLoading &&
-                        isOnline,
-                showHint = isOnline &&
-                        selectedPlaceId == null &&
-                        candidates.isNotEmpty(),
-                errorMessage = if (!isOnline) {
-                    if (isSaving) {
-                        "Connection lost. Your submitted vote is awaiting server confirmation."
-                    } else {
-                        "You're offline. You can browse and filter saved places. Reconnect to confirm your vote."
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (isCreator) {
+                    OutlinedButton(
+                        onClick = { showChooseDialog = true },
+                        enabled = selectedPlaceId != null && !isSaving && !isLoading && isOnline,
+                        modifier = Modifier.padding(top = 12.dp)
+                    ) {
+                        Text("Choose for the group", color = BrandBrown)
                     }
-                } else {
-                    voteError
-                },
-                onVote = {
-                    viewModel.onVoteConfirmed(onDone = onVoted)
-                },
-                buttonText = when {
-                    isSaving -> "Saving..."
-                    !isOnline -> "Connect to vote"
-                    meeting.hasVoted -> "Update vote"
-                    else -> "Vote"
                 }
-            )
+                VoteBar(
+                    canVote = selectedPlaceId != null &&
+                            !isSaving &&
+                            !isLoading &&
+                            isOnline,
+                    showHint = isOnline &&
+                            selectedPlaceId == null &&
+                            candidates.isNotEmpty(),
+                    errorMessage = if (!isOnline) {
+                        if (isSaving) {
+                            "Connection lost. Your submitted vote is awaiting server confirmation."
+                        } else {
+                            "You're offline. You can browse and filter saved places. Reconnect to confirm your vote."
+                        }
+                    } else {
+                        voteError
+                    },
+                    onVote = {
+                        viewModel.onVoteConfirmed(onDone = onVoted)
+                    },
+                    buttonText = when {
+                        isSaving -> "Saving..."
+                        !isOnline -> "Connect to vote"
+                        meeting.hasVoted -> "Update vote"
+                        else -> "Vote"
+                    }
+                )
+            }
         }
     ) { innerPadding ->
         Column(
