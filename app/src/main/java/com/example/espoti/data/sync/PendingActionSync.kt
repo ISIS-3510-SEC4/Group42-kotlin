@@ -9,6 +9,7 @@ import com.example.espoti.data.repository.FriendshipRepository
 import com.example.espoti.data.repository.UserRepository
 import com.example.espoti.data.repository.MeetingEventRepository
 import com.example.espoti.data.repository.MeetingPreparationService
+import com.example.espoti.data.repository.PlaceRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -36,7 +37,11 @@ class PendingActionSync(
     private val maxAttempts: Int = MAX_ATTEMPTS,
     private val timeoutMillis: Long = TIMEOUT_MILLIS,
     private val meetingRepository: MeetingEventRepository = MeetingEventRepository(),
-    private val meetingPreparationService: MeetingPreparationService,
+    private val meetingPreparationService: MeetingPreparationService =
+        MeetingPreparationService(
+            meetingRepository = meetingRepository,
+            placeRepository = PlaceRepository()
+        ),
     private val friendshipRepository: FriendshipRepository =
         FriendshipRepository()
 ) {
