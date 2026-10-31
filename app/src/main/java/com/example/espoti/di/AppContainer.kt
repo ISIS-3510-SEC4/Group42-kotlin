@@ -35,6 +35,9 @@ import java.io.File
 import com.example.espoti.data.local.TransportFilterPreferences
 import com.example.espoti.data.local.SharedPreferencesTransportFilterPreferences
 import com.example.espoti.data.local.InMemoryTransportFilterPreferences
+import android.util.Log
+import android.content.pm.ApplicationInfo
+import com.example.espoti.data.cache.FriendCodeCache
 
 // ============================================================================
 // APP CONTAINER (manual dependency injection for the Sprint 3 layers)
@@ -120,17 +123,50 @@ object AppContainer {
             InMemoryTransportFilterPreferences()
         }
     // ---- Caching ------------------------------------------------------------
+// ---- Caching ------------------------------------------------------------
 
     private val sharedUserCache by lazy { UserCache() }
-    private val sharedUserRepository by lazy { CachingUserRepository(UserRepository(), sharedUserCache) }
+    private val sharedFriendCodeCache by lazy { FriendCodeCache() }
+
+    private val sharedUserRepository by lazy {
+        CachingUserRepository(
+            remote = UserRepository(),
+            cache = sharedUserCache,
+            codeCache = sharedFriendCodeCache,
+            onCodeCacheEvent = { event ->
+                // Debug diagnostics contain no codes, names or account ids.
+                val isDebuggable =
+                    (context.applicationInfo.flags and
+                            ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
+                if (isDebuggable) {
+                    Log.d("EspotiCache", "Friend code cache: $event")
+                }
+            }
+        )
+    }
 
     val userCache: UserCache
         get() = if (isReady) sharedUserCache else UserCache()
 
-    /** users/{uid} with the shared in-memory cache in front of reads. */
-    val userRepository: UserRepository
-        get() = if (isReady) sharedUserRepository else CachingUserRepository(UserRepository(), UserCache())
+    val friendCodeCache: FriendCodeCache
+        get() = if (isReady) {
+            sharedFriendCodeCache
+        } else {
+            FriendCodeCache()
+        }
 
+    /** User reads and friend-code lookups share the app-wide caches. */
+    val userRepository: UserRepository
+        get() = if (isReady) {
+            sharedUserRepository
+        } else {
+            CachingUserRepository(
+                remote = UserRepository(),
+                cache = UserCache(),
+                currentUserId = { null }
+            )
+        }
     // ---- Background sync ----------------------------------------------------
 
     private val workManagerSync by lazy { WorkManagerSyncScheduler(context) }
@@ -145,6 +181,7 @@ object AppContainer {
      */
     fun clearUserData(uid: String) {
         userCache.clear()
+        friendCodeCache.clear()
         val profiles = profileStore
         val friends = friendsStore
         val notifications = notificationsStore
