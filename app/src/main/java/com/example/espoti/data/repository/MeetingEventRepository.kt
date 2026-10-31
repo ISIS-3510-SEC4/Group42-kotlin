@@ -13,6 +13,8 @@ import kotlinx.coroutines.tasks.await
 import com.example.espoti.model.domain.Location
 import com.example.espoti.analytics.AnalyticsDependencies
 import com.example.espoti.analytics.VotingTelemetry
+import com.example.espoti.analytics.PlaceDecisionTelemetry
+import com.example.espoti.model.domain.DecisionMethod
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 
@@ -42,6 +44,17 @@ open class MeetingEventRepository(
             }
         )
     }
+
+    // BQ "organizer decision method" (see PlaceDecisionTelemetry).
+    private val placeDecisionTelemetry by lazy {
+        PlaceDecisionTelemetry(
+            emit = { event ->
+                AnalyticsDependencies.tracker.persist(event)
+            },
+            closedBy = { AuthRepository().currentUserId }
+        )
+    }
+
     open suspend fun createMeeting(meeting: MeetingEvent): Result<String> = runCatching {
         val ref = meetings.document()
         ref.set(meeting.copy(id = ref.id)).await()
@@ -352,14 +365,20 @@ open class MeetingEventRepository(
      * placeId and UPCOMING (or CANCELED if nobody voted), and drops invites
      * that were never answered. Runs in a transaction that re-reads the
      * meeting, so two clients closing at once can't overwrite each other.
-     * Returns the meeting as stored after the call.
+     * Returns the meeting as stored after the call. Only the call that
+     * actually closes it records MEETING_PLACE_DECIDED (decisionMethod VOTING).
      */
     open suspend fun closeVotingIfDone(
         meetingId: String,
         now: Long = System.currentTimeMillis()
     ): Result<MeetingEvent?> = runCatching {
         val ref = meetings.document(meetingId)
-        db.runTransaction { transaction ->
+        // Firestore may retry the lambda, so this is reset on every attempt.
+        var closedNow: MeetingEvent? = null
+        var closeReason = PlaceDecisionTelemetry.REASON_ALL_VOTED
+
+        val result = db.runTransaction { transaction ->
+            closedNow = null
             val meeting = transaction.get(ref).toObject(MeetingEvent::class.java)?.copy(id = meetingId)
             if (meeting == null || !VotingRules.isVotingDone(meeting, meeting.voteList(), now)) {
                 return@runTransaction meeting
@@ -369,18 +388,87 @@ open class MeetingEventRepository(
             val closed = meeting.copy(
                 status = if (winner != null) StatusMeeting.UPCOMING else StatusMeeting.CANCELED,
                 placeId = winner,
-                invitedIds = emptyList()
+                invitedIds = emptyList(),
+                decisionMethod = DecisionMethod.VOTING
             )
             transaction.update(
                 ref,
                 mapOf(
                     "status" to closed.status.name,
                     "placeId" to winner,
-                    "invitedIds" to emptyList<String>()
+                    "invitedIds" to emptyList<String>(),
+                    "decisionMethod" to DecisionMethod.VOTING.name
+                )
+            )
+            closeReason = if (meeting.votingDeadline in 1..now) {
+                PlaceDecisionTelemetry.REASON_DEADLINE
+            } else {
+                PlaceDecisionTelemetry.REASON_ALL_VOTED
+            }
+            closedNow = closed
+            closed
+        }.await()
+
+        closedNow?.let { placeDecisionTelemetry.decided(it, DecisionMethod.VOTING, closeReason) }
+        result
+    }
+
+    /**
+     * The organizer picks the place for everybody instead of waiting for the
+     * group voting: only the creator, only while VOTING (deadline not passed)
+     * and only one of the candidates. Sets UPCOMING with that place, drops the
+     * pending invites and records MEETING_PLACE_DECIDED (decisionMethod DIRECT).
+     * Other participants' votes stay stored but no longer count.
+     */
+    open suspend fun chooseDirectly(
+        meetingId: String,
+        uid: String,
+        placeId: String,
+        now: Long = System.currentTimeMillis()
+    ): Result<MeetingEvent> = runCatching {
+        val ref = meetings.document(meetingId)
+
+        val chosen = db.runTransaction { transaction ->
+            val meeting = transaction.get(ref).toObject(MeetingEvent::class.java)?.copy(id = meetingId)
+                ?: throw IllegalStateException("Meeting not found.")
+
+            require(meeting.creatorId == uid) {
+                "Only the organizer can choose the place for the group."
+            }
+            require(
+                meeting.status == StatusMeeting.VOTING &&
+                    meeting.votingDeadline !in 1..now
+            ) {
+                "The voting is already closed."
+            }
+            require(placeId in meeting.candidatePlaceIds) {
+                "Choose one of the candidate places."
+            }
+
+            val closed = meeting.copy(
+                status = StatusMeeting.UPCOMING,
+                placeId = placeId,
+                invitedIds = emptyList(),
+                decisionMethod = DecisionMethod.DIRECT
+            )
+            transaction.update(
+                ref,
+                mapOf(
+                    "status" to StatusMeeting.UPCOMING.name,
+                    "placeId" to placeId,
+                    "invitedIds" to emptyList<String>(),
+                    "decisionMethod" to DecisionMethod.DIRECT.name
                 )
             )
             closed
         }.await()
+
+        placeDecisionTelemetry.decided(
+            chosen,
+            DecisionMethod.DIRECT,
+            PlaceDecisionTelemetry.REASON_ORGANIZER_CHOICE
+        )
+        chosen
     }
 
     open suspend fun updateStatus(id: String, status: StatusMeeting): Result<Unit> = runCatching {
