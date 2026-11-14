@@ -18,7 +18,7 @@ data class MeetingContext(
 
 object MeetingContextCalculator {
 
-    const val ARRIVAL_RADIUS_METERS = 100.0
+    const val ARRIVAL_RADIUS_METERS = 300.0
 
     fun calculate(
         meeting: Meeting,
