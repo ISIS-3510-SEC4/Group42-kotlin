@@ -49,7 +49,7 @@ object MeetingContextCalculator {
 
         // Se exige buena precisión y que incluso el margen de error
         // quede dentro del radio de llegada.
-        val near = fix.accuracyMeters <= 50.0 &&
+        val near = fix.accuracyMeters <= 300.0 &&
                 distance + fix.accuracyMeters <= ARRIVAL_RADIUS_METERS
 
         val remainingMinutes =
