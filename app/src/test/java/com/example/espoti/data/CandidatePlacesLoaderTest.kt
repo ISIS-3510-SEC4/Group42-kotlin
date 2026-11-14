@@ -1,6 +1,8 @@
+
 package com.example.espoti.data
 
 import com.example.espoti.data.repository.CandidatePlacesLoader
+import com.example.espoti.data.repository.MeetingEventRepository
 import com.example.espoti.data.repository.PlaceRepository
 import com.example.espoti.model.domain.Place
 import kotlinx.coroutines.CompletableDeferred
@@ -19,6 +21,11 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class CandidatePlacesLoaderTest {
 
+    private fun fakeMeetingRepository() =
+        MeetingEventRepository {
+            error("No Firestore in unit tests")
+        }
+
     @Test
     fun loadsConcurrently_withBoundedParallelism_andPreservesOrder() =
         runTest {
@@ -26,7 +33,9 @@ class CandidatePlacesLoaderTest {
             var peak = 0
 
             val repository = object : PlaceRepository(
-                dbProvider = { error("No Firestore in unit tests") }
+                dbProvider = {
+                    error("No Firestore in unit tests")
+                }
             ) {
                 override suspend fun getPlace(
                     id: String
@@ -45,79 +54,108 @@ class CandidatePlacesLoaderTest {
 
             val loader = CandidatePlacesLoader(
                 placeRepository = repository,
+                meetingRepository = fakeMeetingRepository(),
                 ioDispatcher = StandardTestDispatcher(testScheduler),
                 maxParallelism = 2
             )
 
             val startedAt = currentTime
-            val result = loader.load(listOf("a", "b", "c"))
 
-            assertEquals(listOf("a", "b", "c"), result.map { it.placeId })
+            val result = loader.load(
+                meetingId = "meeting-1",
+                placeIds = listOf("a", "b", "c")
+            )
+
+            assertEquals(
+                listOf("a", "b", "c"),
+                result.map { it.placeId }
+            )
             assertEquals(2, peak)
             assertEquals(200L, currentTime - startedAt)
             assertEquals(0, active)
         }
 
     @Test
-    fun unavailablePlace_doesNotDiscardOtherCandidates() = runTest {
-        val repository = object : PlaceRepository(
-            dbProvider = { error("No Firestore in unit tests") }
-        ) {
-            override suspend fun getPlace(
-                id: String
-            ): Result<Place?> =
-                if (id == "missing") {
-                    Result.failure(IllegalStateException("Unavailable"))
-                } else {
-                    Result.success(Place(id = id, name = id))
+    fun unavailablePlace_doesNotDiscardOtherCandidates() =
+        runTest {
+            val repository = object : PlaceRepository(
+                dbProvider = {
+                    error("No Firestore in unit tests")
                 }
+            ) {
+                override suspend fun getPlace(
+                    id: String
+                ): Result<Place?> =
+                    if (id == "missing") {
+                        Result.failure(
+                            IllegalStateException("Unavailable")
+                        )
+                    } else {
+                        Result.success(
+                            Place(id = id, name = id)
+                        )
+                    }
+            }
+
+            val loader = CandidatePlacesLoader(
+                placeRepository = repository,
+                meetingRepository = fakeMeetingRepository(),
+                ioDispatcher = StandardTestDispatcher(testScheduler)
+            )
+
+            val result = loader.load(
+                meetingId = "meeting-1",
+                placeIds = listOf("a", "missing", "b")
+            )
+
+            assertEquals(
+                listOf("a", "b"),
+                result.map { it.placeId }
+            )
         }
-
-        val loader = CandidatePlacesLoader(
-            placeRepository = repository,
-            ioDispatcher = StandardTestDispatcher(testScheduler)
-        )
-
-        val result = loader.load(listOf("a", "missing", "b"))
-
-        assertEquals(listOf("a", "b"), result.map { it.placeId })
-    }
 
     @Test
-    fun cancellation_reachesRunningChildReads() = runTest {
-        val started = CompletableDeferred<Unit>()
-        var canceledReads = 0
+    fun cancellation_reachesRunningChildReads() =
+        runTest {
+            val started = CompletableDeferred<Unit>()
+            var canceledReads = 0
 
-        val repository = object : PlaceRepository(
-            dbProvider = { error("No Firestore in unit tests") }
-        ) {
-            override suspend fun getPlace(
-                id: String
-            ): Result<Place?> {
-                started.complete(Unit)
+            val repository = object : PlaceRepository(
+                dbProvider = {
+                    error("No Firestore in unit tests")
+                }
+            ) {
+                override suspend fun getPlace(
+                    id: String
+                ): Result<Place?> {
+                    started.complete(Unit)
 
-                try {
-                    awaitCancellation()
-                } finally {
-                    canceledReads++
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        canceledReads++
+                    }
                 }
             }
+
+            val loader = CandidatePlacesLoader(
+                placeRepository = repository,
+                meetingRepository = fakeMeetingRepository(),
+                ioDispatcher = StandardTestDispatcher(testScheduler),
+                maxParallelism = 1
+            )
+
+            val job = launch {
+                loader.load(
+                    meetingId = "meeting-1",
+                    placeIds = listOf("a", "b")
+                )
+            }
+
+            started.await()
+            job.cancelAndJoin()
+
+            assertTrue(job.isCancelled)
+            assertEquals(1, canceledReads)
         }
-
-        val loader = CandidatePlacesLoader(
-            placeRepository = repository,
-            ioDispatcher = StandardTestDispatcher(testScheduler),
-            maxParallelism = 1
-        )
-
-        val job = launch {
-            loader.load(listOf("a", "b"))
-        }
-
-        started.await()
-        job.cancelAndJoin()
-
-        assertTrue(job.isCancelled)
-        assertEquals(1, canceledReads)
-    }
 }
