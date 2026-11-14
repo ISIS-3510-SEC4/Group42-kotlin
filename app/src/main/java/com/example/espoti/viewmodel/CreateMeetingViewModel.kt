@@ -631,19 +631,30 @@ class CreateMeetingViewModel(
 
         _isSavingStartingLocation.value = true
         _startingLocationError.value = null
+        _startingLocationSavedOffline.value = false
 
-        val location = com.example.espoti.model.domain.Location(
+        val location = Location(
             latitude = latitude,
             longitude = longitude
         )
 
         viewModelScope.launch {
+            // If there is no connection, save the action locally.
+            if (!connectivityObserver.isOnline.value) {
+                saveStartingLocationOffline(
+                    uid = uid,
+                    meetingId = meetingId,
+                    location = location,
+                    onAllLocationsCollected = onAllLocationsCollected
+                )
+                return@launch
+            }
+
             meetingRepository.saveStartingLocation(
                 meetingId = meetingId,
                 uid = uid,
                 location = location
             ).fold(
-
                 onSuccess = { allCollected ->
                     _isSavingStartingLocation.value = false
                     _allStartingLocationsCollected.value = allCollected
@@ -657,12 +668,49 @@ class CreateMeetingViewModel(
                 onFailure = { error ->
                     if (error is CancellationException) throw error
 
-                    _isSavingStartingLocation.value = false
-                    _startingLocationError.value =
-                        error.message
-                            ?: "Couldn't save your starting location."
+                    // A failed Firestore write may be caused by a
+                    // connection that is unavailable or unstable.
+                    saveStartingLocationOffline(
+                        uid = uid,
+                        meetingId = meetingId,
+                        location = location,
+                        onAllLocationsCollected = onAllLocationsCollected
+                    )
                 }
             )
+        }
+    }
+
+    private suspend fun saveStartingLocationOffline(
+        uid: String,
+        meetingId: String,
+        location: Location,
+        onAllLocationsCollected: (Boolean) -> Unit
+    ) {
+        try {
+            pendingActionStore.enqueue(
+                PendingAction.SubmitStartingLocation(
+                    ownerUid = uid,
+                    meetingId = meetingId,
+                    location = location,
+                    createdAt = clock()
+                )
+            )
+
+            _startingLocationSavedOffline.value = true
+            _isSavingStartingLocation.value = false
+
+            _allStartingLocationsCollected.value = false
+
+            syncScheduler.scheduleSync()
+
+            onAllLocationsCollected(false)
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+
+            _isSavingStartingLocation.value = false
+            _startingLocationError.value =
+                "Couldn't save your location locally. Please try again."
         }
     }
 

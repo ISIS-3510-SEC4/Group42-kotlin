@@ -32,12 +32,28 @@ class MeetingPreparationService(
             .getPlacesNearby(center, radiusKm = 5.0)
             .getOrThrow()
 
-        // 5. Extract valid and unique candidate IDs.
-        val candidateIds = nearbyPlaces
+
+        nearbyPlaces.forEach { place ->
+            android.util.Log.d(
+                "MeetingPreparation",
+                "Place: ${place.name}, " +
+                        "ID: ${place.id}, " +
+                        "Location: ${place.location.latitude}, " +
+                        "${place.location.longitude}, " +
+                        "Distance: ${place.distance}"
+            )
+        }
+
+        val existingCandidateIds = meeting.candidatePlaceIds
+            .filter { it.isNotBlank() }
+
+        val nearbyCandidateIds = nearbyPlaces
             .map { it.id }
             .filter { it.isNotBlank() }
-            .distinct()
-            .take(MAX_CANDIDATES)
+
+        val candidateIds = (
+                existingCandidateIds + nearbyCandidateIds
+                ).distinct().take(MAX_CANDIDATES)
 
         // 6. Validate that there are enough candidates.
         if (candidateIds.size < 2) {

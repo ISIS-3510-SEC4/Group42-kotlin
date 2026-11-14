@@ -1,9 +1,8 @@
 package com.example.espoti.ui.screens
 
-
+import com.example.espoti.R
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,19 +13,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.espoti.R
 import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.components.FriendAvatar
@@ -62,6 +56,7 @@ fun CreateMeetingScreen2(
     val state by viewModel.recommendationState
     val isSavingMeeting by viewModel.isSavingMeeting
     val saveMeetingError by viewModel.saveMeetingError
+    val manualPlaces by viewModel.manualPlaces
 
     // Normally Schedule already started the request.
     // This also handles re-entering after a cancelled screen instance.
@@ -75,15 +70,19 @@ fun CreateMeetingScreen2(
         }
     }
 
-    val hasRecommendations =
-        !state.isLoading && state.error == null && state.recommendations.isNotEmpty()
+    val hasPlaces =
+        !state.isLoading &&
+                (
+                        state.recommendations.isNotEmpty() ||
+                                manualPlaces.isNotEmpty()
+                        )
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             VoteBar(
-                canVote = hasRecommendations && selectedPlaceId != null && !isSavingMeeting,
-                showHint = hasRecommendations && selectedPlaceId == null,
+                canVote = hasPlaces && selectedPlaceId != null && !isSavingMeeting,
+                showHint = hasPlaces && selectedPlaceId == null,
                 errorMessage = saveMeetingError,
                 // Navigates only after the meeting is saved (see onVoteConfirmed).
                 onVote = { viewModel.onVoteConfirmed(onDone = onVoteClick) }
@@ -232,6 +231,34 @@ fun CreateMeetingScreen2(
 
                         Spacer(modifier = Modifier.height(8.dp))
                     }
+                }
+
+            }
+            if (manualPlaces.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Text(
+                    text = "Your custom places:",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = BrandBrown
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                manualPlaces.forEach { place ->
+                    RecommendationCard(
+                        title = place.name,
+                        rating = 0,
+                        subtitle = place.location.address.ifBlank {
+                            "Custom place"
+                        },
+                        isSelected = selectedPlaceId == place.id,
+                        onClick = {
+                            viewModel.onManualPlaceSelected(place)
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }

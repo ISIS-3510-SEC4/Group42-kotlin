@@ -1,3 +1,4 @@
+
 package com.example.espoti.data.repository
 
 import com.example.espoti.model.domain.Recommendation
@@ -22,6 +23,7 @@ import kotlinx.coroutines.withContext
  */
 class CandidatePlacesLoader(
     private val placeRepository: PlaceRepository,
+    private val meetingRepository: MeetingEventRepository,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val maxParallelism: Int = 4
 ) {
@@ -30,6 +32,7 @@ class CandidatePlacesLoader(
     }
 
     suspend fun load(
+        meetingId: String,
         placeIds: List<String>
     ): List<Recommendation> = withContext(ioDispatcher) {
         val permits = Semaphore(maxParallelism)
@@ -38,9 +41,15 @@ class CandidatePlacesLoader(
             placeIds.map { placeId ->
                 async {
                     permits.withPermit {
-                        val result = placeRepository.getPlace(placeId)
+                        val result = if (placeId.startsWith("custom_")) {
+                            meetingRepository.getCustomPlace(
+                                meetingId,
+                                placeId
+                            )
+                        } else {
+                            placeRepository.getPlace(placeId)
+                        }
 
-                        // Repository Result wrappers must not hide cancellation.
                         currentCoroutineContext().ensureActive()
 
                         result.getOrNull()?.toRecommendation()
