@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import com.example.espoti.di.AppContainer
+import androidx.compose.runtime.collectAsState
 
 private data class AddressSearchResult(
     val label: String,
@@ -68,6 +69,7 @@ fun StartingLocationScreen(
 
     val isSaving by viewModel.isSavingStartingLocation
     val error by viewModel.startingLocationError
+    val isOnline by AppContainer.connectivity.isOnline.collectAsState()
     val previousLocation by viewModel.previousStartingLocation
     val isLoadingPrevious by viewModel.isLoadingPreviousLocation
     val isPreparingCandidates by viewModel.isPreparingCandidates
@@ -394,6 +396,15 @@ fun StartingLocationScreen(
                     Text("Retry finding places")
                 }
             }
+            if (!isOnline) {
+                Text(
+                    text = "You need an internet connection to save your starting location.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
             Button(
                 onClick = {
@@ -419,7 +430,8 @@ fun StartingLocationScreen(
                         )
                     }
                 },
-                enabled = !isSaving &&
+                enabled = isOnline &&
+                        !isSaving &&
                         selectedLatitude != null &&
                         selectedLongitude != null,
                 modifier = Modifier.fillMaxWidth()

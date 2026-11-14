@@ -64,7 +64,8 @@ class MeetingDetailViewModel(
     private val persistenceScope: CoroutineScope = AppContainer.appScope
 ) : MeetingContextViewModel(contextRepository) {
     private val candidatePlacesLoader = CandidatePlacesLoader(
-        placeRepository = placeRepository
+        placeRepository = placeRepository,
+        meetingRepository = meetingRepository
     )
     private val meetingId: String? = savedStateHandle.get<String>("meetingId")
 
@@ -295,7 +296,8 @@ class MeetingDetailViewModel(
             !displayedMeeting.isVoting -> emptyList()
 
             allowRemote -> candidatePlacesLoader.load(
-                event.candidatePlaceIds
+                meetingId = event.id,
+                placeIds = event.candidatePlaceIds
             )
 
             else -> {

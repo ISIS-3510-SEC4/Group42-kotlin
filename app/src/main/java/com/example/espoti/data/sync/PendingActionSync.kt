@@ -126,9 +126,7 @@ class PendingActionSync(
                     if (result?.isSuccess == true) {
                         val allCollected = result.getOrThrow()
 
-                        // The location has been confirmed by Firestore.
-                        // It must not be submitted again.
-                        store.remove(stored.id)
+                        var preparationSucceeded = true
 
                         if (allCollected) {
                             val preparationResult = try {
@@ -143,9 +141,14 @@ class PendingActionSync(
                                 Result.failure(error)
                             }
 
-                            if (preparationResult.isFailure) {
-                                retryLater = true
-                            }
+                            preparationSucceeded = preparationResult.isSuccess
+                        }
+
+                        if (preparationSucceeded) {
+                            store.remove(stored.id)
+                        } else {
+                            store.recordFailure(stored.id)
+                            retryLater = true
                         }
                     } else {
                         store.recordFailure(stored.id)
