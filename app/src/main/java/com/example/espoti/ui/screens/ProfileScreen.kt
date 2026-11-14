@@ -210,9 +210,6 @@ fun ProfileScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            ProfileCoffeeCard(onSupportClick = viewModel::onSupportClick)
-
-            Spacer(modifier = Modifier.height(24.dp))
 
             ProfileMenuItem(text = "Privacy", onClick = viewModel::onPrivacyClick)
             ProfileMenuItem(

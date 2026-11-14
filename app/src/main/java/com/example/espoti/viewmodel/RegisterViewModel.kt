@@ -76,27 +76,43 @@ class RegisterViewModel(
         if (_noticeMessage.value == OfflineMessages.REGISTER) dismissNotice()
     }
 
+    private val _phone = mutableStateOf("")
+    val phone: State<String> = _phone
+
+    private val _phoneError = mutableStateOf(false)
+    val phoneError: State<Boolean> = _phoneError
+
+    fun onPhoneChange(value: String) {
+        if (value.length > 50) return
+        _phone.value = value
+        _phoneError.value = false
+    }
     fun onUsernameChange(value: String) {
+        if (value.length > 50) return
         _username.value = value
         _usernameError.value = false
     }
 
     fun onEmailChange(value: String) {
+        if (value.length > 50) return
         _email.value = value
         _emailError.value = false
     }
 
     fun onConfirmEmailChange(value: String) {
+        if (value.length > 50) return
         _confirmEmail.value = value
         _confirmEmailError.value = false
     }
 
     fun onPasswordChange(value: String) {
+        if (value.length > 50) return
         _password.value = value
         _passwordError.value = false
     }
 
     fun onConfirmPasswordChange(value: String) {
+        if (value.length > 50) return
         _confirmPassword.value = value
         _confirmPasswordError.value = false
     }
@@ -118,7 +134,8 @@ class RegisterViewModel(
         _confirmEmailError.value = false
         _passwordError.value = false
         _confirmPasswordError.value = false
-
+        _phoneError.value = false
+        val phoneNumber = _phone.value.trim().replace(Regex("[ ()-]"), "")
         val error = when {
             _username.value.isBlank() -> {
                 _usernameError.value = true
@@ -155,6 +172,11 @@ class RegisterViewModel(
             _confirmPassword.value != _password.value -> {
                 _confirmPasswordError.value = true
                 "Passwords don't match."
+            }
+            _phone.value.isNotBlank() &&
+                    !phoneNumber.matches(Regex("""\+?[0-9]{7,15}""")) -> {
+                _phoneError.value = true
+                "Enter a valid phone number with 7 to 15 digits."
             }
             else -> null
         }
@@ -200,7 +222,7 @@ class RegisterViewModel(
                 email = email,
                 code = generateFriendCode()
             )
-            userRepository.saveUser(profile)
+            userRepository.saveRegistrationProfile(profile, phoneNumber)
                 .onSuccess {
                     _isLoading.value = false
                     onSuccess()

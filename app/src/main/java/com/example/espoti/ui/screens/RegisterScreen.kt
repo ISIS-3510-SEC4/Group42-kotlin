@@ -64,6 +64,8 @@ fun RegisterScreen(
 ) {
     val username by viewModel.username
     val email by viewModel.email
+    val phone by viewModel.phone
+    val phoneError by viewModel.phoneError
     val confirmEmail by viewModel.confirmEmail
     val password by viewModel.password
     val confirmPassword by viewModel.confirmPassword
@@ -135,6 +137,15 @@ fun RegisterScreen(
             isError = confirmEmailError
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        EspotiField(
+            label = "Phone number (optional)",
+            value = phone,
+            onValueChange = viewModel::onPhoneChange,
+            keyboardType = KeyboardType.Phone,
+            isError = phoneError
+        )
         Spacer(modifier = Modifier.height(16.dp))
 
         EspotiField(

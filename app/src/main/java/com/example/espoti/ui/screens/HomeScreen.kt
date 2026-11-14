@@ -168,9 +168,6 @@ private fun HomeContent(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            CoffeeCard()
-
-            Spacer(modifier = Modifier.height(24.dp))
 
             Text(
                 text = "Meeting History",

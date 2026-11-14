@@ -30,8 +30,9 @@ open class AccountRepository(
             .whereArrayContains("userIds", uid)
             .get(Source.SERVER).await()
             .documents.map { it.reference }
-        val refs = friendships + db.collection("users").document(uid)
-
+        val refs = friendships +
+                db.collection("userPrivate").document(uid) +
+                db.collection("users").document(uid)
         refs.chunked(MAX_WRITES_PER_BATCH).forEach { chunk ->
             val batch = db.batch()
             chunk.forEach { batch.delete(it) }

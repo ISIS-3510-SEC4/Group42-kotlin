@@ -10,7 +10,28 @@ import com.google.firebase.firestore.Source
 open class UserRepository(
     dbProvider: () -> FirebaseFirestore = { FirebaseFirestore.getInstance() }
 ) {
-    private val users by lazy { dbProvider().collection("users") }
+    private val db by lazy(dbProvider)
+    private val users by lazy { db.collection("users") }
+
+    suspend fun saveRegistrationProfile(
+        user: User,
+        phoneNumber: String
+    ): Result<Unit> {
+        if (phoneNumber.isEmpty()) return saveUser(user)
+
+        return runCatching {
+            val batch = db.batch()
+
+            batch.set(users.document(user.id), user)
+            batch.set(
+                db.collection("userPrivate").document(user.id),
+                mapOf("phoneNumber" to phoneNumber)
+            )
+
+            batch.commit().await()
+            Unit
+        }
+    }
 
     open suspend fun saveUser(user: User): Result<Unit> = runCatching {
         users.document(user.id).set(user.copy()).await()
