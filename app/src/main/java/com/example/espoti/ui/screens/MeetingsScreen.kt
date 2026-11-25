@@ -6,17 +6,19 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -38,6 +40,7 @@ import com.example.espoti.ui.components.EspotiLogo
 import com.example.espoti.ui.components.EspotiNotificationsBell
 import com.example.espoti.ui.components.EspotiPrimaryButton
 import com.example.espoti.ui.components.MeetingLocationAccess
+import com.example.espoti.ui.components.MeetingLocationAutoRefresh
 import com.example.espoti.ui.components.PreviousMeetingCard
 import com.example.espoti.ui.components.UpcomingMeetingCard
 import com.example.espoti.ui.components.VotingMeetingCard
@@ -55,6 +58,11 @@ import com.example.espoti.ui.components.SavedDataCaption
  * still voting are listed first in Upcoming with a "Voting" chip.
  * [highlightMeetingId] (set after voting) opens Upcoming, scrolls to that
  * meeting and outlines it for a few seconds.
+ *
+ * Sprint 4 micro-optimization: a LazyColumn with stable keys (only the cards
+ * on screen are composed, and a state change recomposes only those), tabs
+ * grouped once per refresh in the ViewModel, `located` and the check-in
+ * callback remembered, and state read inside each item instead of the screen.
  */
 @Composable
 fun MeetingsScreen(
@@ -72,6 +80,7 @@ fun MeetingsScreen(
     val highlightedId by viewModel.highlightedMeetingId
     val isOnline by viewModel.isOnline
     val isShowingSaved by viewModel.isShowingSaved
+    val listState = rememberLazyListState()
 
     // Reload every time the screen is shown (a vote may have just changed it).
     LaunchedEffect(Unit) {
@@ -82,52 +91,102 @@ fun MeetingsScreen(
         highlightMeetingId?.let(viewModel::highlight)
     }
 
-    val meetings = remember(allMeetings, selectedTab) { viewModel.meetingsFor(selectedTab) }
+    // Already grouped by the ViewModel: just a lookup.
+    val meetings = viewModel.meetingsFor(selectedTab)
+    val showingSaved = !isOnline || isShowingSaved
+    val showRefreshError = error != null && allMeetings.isNotEmpty()
+
+    val body = when {
+        showingSaved && selectedTab == MeetingTab.UPCOMING -> MeetingsBody.OFFLINE_UPCOMING
+        isLoading && allMeetings.isEmpty() -> MeetingsBody.LOADING
+        error != null && allMeetings.isEmpty() -> MeetingsBody.ERROR
+        meetings.isEmpty() -> MeetingsBody.EMPTY
+        else -> MeetingsBody.LIST
+    }
+
+    // Travel status / check-in only make sense for confirmed meetings with a
+    // place and a start time. Same list instance until the meetings change.
+    val located = remember(meetings) {
+        meetings.filter { !it.isVoting && it.latitude != null && it.startsAtEpochMillis != null }
+    }
+    val showLocation = body == MeetingsBody.LIST && selectedTab == MeetingTab.UPCOMING && located.isNotEmpty()
+    if (showLocation) {
+        // At screen level, so scrolling the location item away doesn't stop it.
+        MeetingLocationAutoRefresh(viewModel = viewModel, meetings = located)
+    }
+    val onCheckIn: (Meeting) -> Unit = remember(located) {
+        { meeting -> scope.launch { viewModel.refreshContext(meetings = located, checkIn = meeting) } }
+    }
+
+    // Scroll to the highlighted meeting (it may not be composed yet in a lazy list).
+    val itemsBeforeMeetings = 2 + (if (showingSaved) 1 else 0) +
+        (if (showRefreshError) 1 else 0) + (if (showLocation) 1 else 0)
+    val highlightIndex = remember(meetings, highlightedId, body) {
+        if (body == MeetingsBody.LIST) meetings.indexOfFirst { it.id == highlightedId } else -1
+    }
+    LaunchedEffect(highlightIndex) {
+        if (highlightIndex >= 0) listState.animateScrollToItem(itemsBeforeMeetings + highlightIndex)
+    }
 
     Scaffold { innerPadding ->
 
-        Column(
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .padding(innerPadding),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp)
         ) {
 
-            MeetingsHeader(hasUnreadNotifications = hasUnreadNotifications, onNotificationsClick = onNotificationsClick)
-            Spacer(modifier = Modifier.height(24.dp))
+            item(key = "header", contentType = "header") {
+                Column {
+                    MeetingsHeader(hasUnreadNotifications = hasUnreadNotifications, onNotificationsClick = onNotificationsClick)
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
 
-            MeetingsTabs(selectedTab=selectedTab,
+            item(key = "tabs", contentType = "tabs") {
+                Column {
+                    MeetingsTabs(
+                        selectedTab = selectedTab,
                         onTabSelected = viewModel::onTabSelected
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            if (!isOnline || isShowingSaved) {
-                SavedDataCaption(
-                    text = "Showing meetings available on this device. " +
-                            "You can browse Previous and Canceled. " +
-                            "Connect to refresh the information.",
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
 
-// Keep refresh errors visible even when saved cards are available.
-            if (error != null && allMeetings.isNotEmpty()) {
-                Text(
-                    text = error.orEmpty(),
-                    color = BrandBrown
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                EspotiPrimaryButton(
-                    text = "Retry",
-                    onClick = viewModel::refresh
-                )
-                Spacer(modifier = Modifier.height(12.dp))
+            if (showingSaved) {
+                item(key = "saved", contentType = "saved") {
+                    SavedDataCaption(
+                        text = "Showing meetings available on this device. " +
+                                "You can browse Previous and Canceled. " +
+                                "Connect to refresh the information.",
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                }
             }
 
-            when {
-                (!isOnline || isShowingSaved) &&
-                        selectedTab == MeetingTab.UPCOMING -> {
+            // Keep refresh errors visible even when saved cards are available.
+            if (showRefreshError) {
+                item(key = "refresh-error", contentType = "error") {
+                    Column {
+                        Text(
+                            text = error.orEmpty(),
+                            color = BrandBrown
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        EspotiPrimaryButton(
+                            text = "Retry",
+                            onClick = viewModel::refresh
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+            }
+
+            when (body) {
+                MeetingsBody.OFFLINE_UPCOMING -> item(key = "status", contentType = "status") {
                     Text(
                         text = "Connect to load Upcoming. " +
                                 "You can browse saved meetings in Previous and Canceled.",
@@ -135,22 +194,25 @@ fun MeetingsScreen(
                         color = BrandBrown
                     )
                 }
-                isLoading && allMeetings.isEmpty() -> {
-                    CircularProgressIndicator(
-                        color = BrandBrown,
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
+
+                MeetingsBody.LOADING -> item(key = "status", contentType = "status") {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        CircularProgressIndicator(
+                            color = BrandBrown,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                    }
                 }
 
-                error != null && allMeetings.isEmpty() -> {
-                    Text(text = error.orEmpty(), color = BrandBrown)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    EspotiPrimaryButton(text = "Retry", onClick = viewModel::refresh)
+                MeetingsBody.ERROR -> item(key = "status", contentType = "status") {
+                    Column {
+                        Text(text = error.orEmpty(), color = BrandBrown)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        EspotiPrimaryButton(text = "Retry", onClick = viewModel::refresh)
+                    }
                 }
 
-                meetings.isEmpty() -> {
-                    val showingSaved = !isOnline || isShowingSaved
-
+                MeetingsBody.EMPTY -> item(key = "status", contentType = "status") {
                     Text(
                         text = if (showingSaved) {
                             when (selectedTab) {
@@ -180,69 +242,77 @@ fun MeetingsScreen(
                     )
                 }
 
-                else -> when (selectedTab) {
+                MeetingsBody.LIST -> when (selectedTab) {
                     MeetingTab.UPCOMING -> {
-                        // Travel status / check-in only make sense for confirmed
-                        // meetings with a place and a start time.
-                        val located = meetings.filter {
-                            !it.isVoting && it.latitude != null && it.startsAtEpochMillis != null
-                        }
-                        if (located.isNotEmpty()) {
-                            MeetingLocationAccess(
-                                viewModel = viewModel,
-                                meetings = located
-                            )
-                        }
-
-                        meetings.forEach { meeting ->
-                            HighlightableMeeting(
-                                highlighted = meeting.id == highlightedId,
-                                onHighlightShown = viewModel::clearHighlight
-                            ) { modifier ->
-                                if (meeting.isVoting) {
-                                    VotingMeetingCard(
-                                        meeting = meeting,
-                                        onVoteClick = onDetailClick,
-                                        modifier = modifier
-                                    )
-                                } else {
-                                    UpcomingMeetingCard(
-                                        meeting = meeting,
-                                        onDetailClick = onDetailClick,
-                                        onTakePhotoClick = {},
-                                        status = viewModel.contexts[meeting.id],
-                                        loading = viewModel.loading,
-                                        onCheckIn = {
-                                            scope.launch {
-                                                viewModel.refreshContext(
-                                                    meetings = located,
-                                                    checkIn = meeting
-                                                )
-                                            }
-                                        },
-                                        modifier = modifier
-                                    )
-                                }
+                        if (showLocation) {
+                            item(key = "location", contentType = "location") {
+                                MeetingLocationAccess(
+                                    viewModel = viewModel,
+                                    meetings = located,
+                                    autoRefresh = false
+                                )
                             }
+                        }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                        items(
+                            items = meetings,
+                            key = { it.id },
+                            contentType = { if (it.isVoting) "voting" else "upcoming" }
+                        ) { meeting ->
+                            Column {
+                                HighlightableMeeting(
+                                    highlighted = meeting.id == highlightedId,
+                                    onHighlightShown = viewModel::clearHighlight
+                                ) { modifier ->
+                                    if (meeting.isVoting) {
+                                        VotingMeetingCard(
+                                            meeting = meeting,
+                                            onVoteClick = onDetailClick,
+                                            modifier = modifier
+                                        )
+                                    } else {
+                                        UpcomingMeetingCard(
+                                            meeting = meeting,
+                                            onDetailClick = onDetailClick,
+                                            onTakePhotoClick = {},
+                                            // Read here (item scope): a new status or the
+                                            // loading flag recomposes only the cards on screen.
+                                            status = viewModel.contexts[meeting.id],
+                                            loading = viewModel.loading,
+                                            onCheckIn = { onCheckIn(meeting) },
+                                            modifier = modifier
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                            }
                         }
                     }
-                    MeetingTab.PREVIOUS -> {
-                        meetings.forEach { meeting ->
+
+                    MeetingTab.PREVIOUS -> items(
+                        items = meetings,
+                        key = { it.id },
+                        contentType = { "previous" }
+                    ) { meeting ->
+                        Column {
                             PreviousMeetingCard(
                                 meeting = meeting,
-                                date = meeting.startsAtEpochMillis?.let(::formatDateTime) ?: "",
+                                date = meetingDateLabel(meeting.startsAtEpochMillis),
                                 showMemories = true
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                         }
                     }
-                    MeetingTab.CANCELED -> {
-                        meetings.forEach { meeting ->
+
+                    MeetingTab.CANCELED -> items(
+                        items = meetings,
+                        key = { it.id },
+                        contentType = { "canceled" }
+                    ) { meeting ->
+                        Column {
                             CanceledMeetingCard(
                                 meeting = meeting,
-                                date = meeting.startsAtEpochMillis?.let(::formatDateTime) ?: "",
+                                date = meetingDateLabel(meeting.startsAtEpochMillis),
                                 onAttendClick = {
                                     // Backend :(
                                 }
@@ -255,6 +325,14 @@ fun MeetingsScreen(
         }
     }
 }
+
+/** What the screen shows under the tabs. */
+private enum class MeetingsBody { OFFLINE_UPCOMING, LOADING, ERROR, EMPTY, LIST }
+
+/** Card date, formatted once per value instead of on every recomposition. */
+@Composable
+private fun meetingDateLabel(startsAt: Long?): String =
+    remember(startsAt) { startsAt?.let(::formatDateTime) ?: "" }
 
 /**
  * Wraps a meeting card: when [highlighted], scrolls it into view and draws an

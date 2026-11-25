@@ -47,6 +47,7 @@ import com.example.espoti.ui.screens.CreateMeetingScreen2
 import com.example.espoti.ui.screens.StartingLocationScreen
 import com.example.espoti.ui.screens.FriendsScreen
 import com.example.espoti.ui.screens.ProfileScreen
+import com.example.espoti.ui.screens.StatsScreen
 import com.example.espoti.ui.screens.EditProfileScreen
 import com.example.espoti.ui.components.NotificationsPanel
 import com.example.espoti.viewmodel.NotificationsViewModel
@@ -126,12 +127,14 @@ sealed class Screen(
     // Opened from Profile's "Edit Profile" button; keeps the Profile tab
     // highlighted but returns to Profile (not Home) on back, like CreateMeeting.
     object EditProfile : Screen("edit_profile", BottomNavItem.PROFILE, BackBehavior.PREVIOUS)
+    // "My stats" (Sprint 4), opened from Profile; back returns to Profile.
+    object Stats : Screen("stats", BottomNavItem.PROFILE, BackBehavior.PREVIOUS)
 
     companion object {
         private val all by lazy {
             listOf(
                 Welcome, Login, Register, Home, Meetings, CreateMeeting1, CreateMeeting2, StartingLocation,
-                MeetingDetail, Friends, Profile, EditProfile
+                MeetingDetail, Friends, Profile, EditProfile, Stats
             )
         }
 
@@ -441,6 +444,7 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
             composable(Screen.Profile.route) {
                 ProfileScreen(
                     onEditProfileClick = { navController.navigate(Screen.EditProfile.route) },
+                    onStatsClick = { navController.navigate(Screen.Stats.route) },
                     // Both end the session (ProfileViewModel / DeleteAccountViewModel
                     // already signed out): back to Welcome with a clean stack.
                     onLogoutClick = {
@@ -451,6 +455,13 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                         notificationsViewModel.clear()
                         navController.navigate(Screen.Welcome.route) { popUpTo(0) }
                     },
+                    hasUnreadNotifications = notifications.isNotEmpty(),
+                    onNotificationsClick = { showNotifications = true }
+                )
+            }
+            composable(Screen.Stats.route) {
+                StatsScreen(
+                    onBackClick = { navController.popBackStack() },
                     hasUnreadNotifications = notifications.isNotEmpty(),
                     onNotificationsClick = { showNotifications = true }
                 )

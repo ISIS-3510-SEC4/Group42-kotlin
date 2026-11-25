@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +28,10 @@ import com.example.espoti.ui.theme.BrandBrown
 import com.example.espoti.ui.theme.BrandOrange
 import com.example.espoti.ui.theme.SurfacePeach
 import com.example.espoti.model.MeetingContext
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 
 @Composable
@@ -82,7 +87,7 @@ fun UpcomingMeetingCard(
 
         meeting.startsAtEpochMillis?.let { start ->
             Text(
-                text = "Meeting: ${formatDateTime(start)}",
+                text = remember(start) { "Meeting: ${formatDateTime(start)}" },
                 color = BrandBrown
             )
         }
@@ -349,7 +354,7 @@ fun VotingMeetingCard(
 
         meeting.startsAtEpochMillis?.let { start ->
             Text(
-                text = "Meeting: ${formatDateTime(start)}",
+                text = remember(start) { "Meeting: ${formatDateTime(start)}" },
                 style = MaterialTheme.typography.bodyMedium,
                 color = BrandBrown
             )
@@ -357,7 +362,7 @@ fun VotingMeetingCard(
 
         meeting.votingDeadline?.let { deadline ->
             Text(
-                text = "Voting closes ${formatDateTime(deadline)}",
+                text = remember(deadline) { "Voting closes ${formatDateTime(deadline)}" },
                 style = MaterialTheme.typography.bodyMedium,
                 color = BrandBrown
             )
@@ -386,8 +391,9 @@ fun VotingMeetingCard(
     }
 }
 
+/** Built once: DateTimeFormatter.ofPattern parses the pattern on every call. */
+private val DATE_TIME_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm", Locale.US)
+
 /** "Oct 20, 14:00" in the device zone. */
 internal fun formatDateTime(millis: Long): String =
-    java.time.Instant.ofEpochMilli(millis)
-        .atZone(java.time.ZoneId.systemDefault())
-        .format(java.time.format.DateTimeFormatter.ofPattern("MMM d, HH:mm", java.util.Locale.US))
+    Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(DATE_TIME_FORMAT)

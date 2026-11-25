@@ -86,7 +86,7 @@ import com.example.espoti.viewmodel.ProfileViewModel
 //   3. Avatar + big copyable code + share icon
 //   4. Preferences / Maximum radio
 //   5. "Invite us a coffee" donation card
-//   6. Settings list: Privacy, Location, Notification, Help us grow,
+//   6. Settings list: My stats (Sprint 4), Privacy, Location, Notification, Help us grow,
 //      Log Out, Delete account
 // Backed by ProfileViewModel (Firestore: users/{uid}).
 //   - Location: asks for the location permission and/or opens the phone's
@@ -102,6 +102,7 @@ fun ProfileScreen(
     onAccountDeleted: () -> Unit,
     hasUnreadNotifications: Boolean = false,
     onNotificationsClick: () -> Unit = {},
+    onStatsClick: () -> Unit = {},
     viewModel: ProfileViewModel = viewModel(),
     deleteAccountViewModel: DeleteAccountViewModel = viewModel()
 ) {
@@ -211,6 +212,7 @@ fun ProfileScreen(
             Spacer(modifier = Modifier.height(20.dp))
 
 
+            ProfileMenuItem(text = "My stats", detail = "Your meetups in numbers", onClick = onStatsClick)
             ProfileMenuItem(text = "Privacy", onClick = viewModel::onPrivacyClick)
             ProfileMenuItem(
                 text = "Location",

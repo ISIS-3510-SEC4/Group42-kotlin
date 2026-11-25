@@ -23,6 +23,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
+import java.time.ZoneId
 
 /**
  * Meetings tabs backed by Firestore (meetings/ where the user is a
@@ -48,6 +49,10 @@ class MeetingsViewModel(
 
     private val _meetings = mutableStateOf<List<Meeting>>(emptyList())
     val meetings: State<List<Meeting>> = _meetings
+
+    // Tabs grouped (filtered + sorted) once per refresh, not on every tab
+    // switch or recomposition.
+    private val _grouped = mutableStateOf<Map<MeetingTab, List<Meeting>>>(emptyMap())
 
     private val _isLoading = mutableStateOf(false)
     val isLoading: State<Boolean> = _isLoading
@@ -91,7 +96,7 @@ class MeetingsViewModel(
     }
 
     fun meetingsFor(tab: MeetingTab): List<Meeting> =
-        groupMeetings(_meetings.value)[tab].orEmpty()
+        _grouped.value[tab].orEmpty()
 
     /** Reloads on entry and whenever connectivity changes. */
     fun refresh() {
@@ -174,6 +179,7 @@ class MeetingsViewModel(
         allowRemote: Boolean
     ) {
         val now = clock()
+        val zone = ZoneId.systemDefault()
 
         val displayed = events.map { event ->
             currentCoroutineContext().ensureActive()
@@ -194,12 +200,14 @@ class MeetingsViewModel(
                 placeFor(it, allowRemote)
             }
 
-            updated.toUiMeeting(uid, place, now)
+            updated.toUiMeeting(uid, place, now, zone)
         }
+        val grouped = groupMeetings(displayed)
 
         currentCoroutineContext().ensureActive()
 
         _meetings.value = displayed
+        _grouped.value = grouped
         _isShowingSaved.value = !allowRemote
         _error.value = null
     }

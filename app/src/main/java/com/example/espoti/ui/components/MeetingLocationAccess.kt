@@ -22,13 +22,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+/**
+ * Location status + buttons. [autoRefresh] = refresh travel status every 30 s
+ * while resumed; a lazy list passes false and calls [MeetingLocationAutoRefresh]
+ * at screen level, so scrolling this item away doesn't stop (or restart) it.
+ */
 @Composable
 fun MeetingLocationAccess(
     viewModel: MeetingContextViewModel,
-    meetings: List<Meeting>
+    meetings: List<Meeting>,
+    autoRefresh: Boolean = true
 ) {
     val scope = rememberCoroutineScope()
-    val owner = LocalLifecycleOwner.current
     val context = LocalContext.current
 
     val permissions = rememberLauncherForActivityResult(
@@ -39,13 +44,8 @@ fun MeetingLocationAccess(
         }
     }
 
-    LaunchedEffect(owner, viewModel, meetings) {
-        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
-            while (true) {
-                viewModel.refreshContext(meetings)
-                delay(30_000L)
-            }
-        }
+    if (autoRefresh) {
+        MeetingLocationAutoRefresh(viewModel = viewModel, meetings = meetings)
     }
 
     Text(
@@ -81,6 +81,23 @@ fun MeetingLocationAccess(
         }
     ) {
         Text("Location permission settings")
+    }
+}
+
+/** Refreshes the travel status of [meetings] every 30 s while the screen is resumed. */
+@Composable
+fun MeetingLocationAutoRefresh(
+    viewModel: MeetingContextViewModel,
+    meetings: List<Meeting>
+) {
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(owner, viewModel, meetings) {
+        owner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (true) {
+                viewModel.refreshContext(meetings)
+                delay(30_000L)
+            }
+        }
     }
 }
 

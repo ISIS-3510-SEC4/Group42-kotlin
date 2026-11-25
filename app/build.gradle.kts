@@ -26,6 +26,19 @@ android {
                 enable = false
             }
         }
+        // Release-like build for profiling (Sprint 4 micro-optimizations):
+        // not debuggable, profileable from the shell, signed with the debug key
+        // so it installs over the debug app without losing its data.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
+    }
+    // Micro-benchmark receiver: debug and benchmark builds only.
+    sourceSets {
+        getByName("debug").kotlin.srcDir("src/perf/java")
+        getByName("benchmark").kotlin.srcDir("src/perf/java")
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
