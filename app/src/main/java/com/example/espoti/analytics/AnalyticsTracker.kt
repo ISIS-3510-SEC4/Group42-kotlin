@@ -223,8 +223,9 @@ class AnalyticsTracker(
                 planningEventFactory
 
             AnalyticsEventType.FEATURE_USED,
-            AnalyticsEventType.FILTER_USED ->
-                featureEventFactory
+            AnalyticsEventType.FILTER_USED,
+            AnalyticsEventType.DRAFT_CREATED,
+            AnalyticsEventType.DRAFT_COMPLETED -> featureEventFactory
 
             AnalyticsEventType.MEETING_CREATED,
             AnalyticsEventType.VOTE_SUCCEEDED,
