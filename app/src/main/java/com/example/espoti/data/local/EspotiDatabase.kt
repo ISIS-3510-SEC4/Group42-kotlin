@@ -15,6 +15,7 @@ import android.database.sqlite.SQLiteOpenHelper
 //   friends          accepted + blocked friends of each signed-in user (Friends)
 //   notifications    last friend requests / meeting invites seen (bell panel)
 //   pending_actions  changes made offline, waiting to be sent (outbox)
+//   user_stats       last "My stats" snapshot of each user (Sprint 4, v2)
 // Every row of user data carries the owner's uid, so two accounts on the same
 // phone never see each other's data and logout can wipe just one of them.
 //
@@ -87,24 +88,38 @@ class EspotiDatabase(context: Context) :
             )
             """.trimIndent()
         )
+        createUserStats(db)
     }
 
+    // Step-by-step migrations: each version only adds what it introduced, so
+    // pending_actions (changes not sent yet) and the other caches survive an
+    // app update.
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Only version 1 exists. A future version must migrate pending_actions
-        // instead of dropping it (those are changes not sent yet); the other
-        // tables are caches and can simply be rebuilt.
-        listOf(USERS, FRIENDS, NOTIFICATIONS, PENDING_ACTIONS).forEach { db.execSQL("DROP TABLE IF EXISTS $it") }
-        onCreate(db)
+        if (oldVersion < 2) createUserStats(db)
+    }
+
+    /** v2: one JSON snapshot of "My stats" per user. */
+    private fun createUserStats(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $USER_STATS (
+                owner_uid TEXT PRIMARY KEY,
+                payload TEXT NOT NULL,
+                computed_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
     }
 
     companion object {
         const val NAME = "espoti.db"
-        const val VERSION = 1
+        const val VERSION = 2
 
         const val USERS = "users"
         const val FRIENDS = "friends"
         const val NOTIFICATIONS = "notifications"
         const val PENDING_ACTIONS = "pending_actions"
+        const val USER_STATS = "user_stats"
     }
 }
 

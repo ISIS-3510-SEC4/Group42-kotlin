@@ -38,6 +38,10 @@ import com.example.espoti.data.local.InMemoryTransportFilterPreferences
 import android.util.Log
 import android.content.pm.ApplicationInfo
 import com.example.espoti.data.cache.FriendCodeCache
+import com.example.espoti.data.cache.StatsCache
+import com.example.espoti.data.local.InMemoryStatsLocalStore
+import com.example.espoti.data.local.SqliteStatsLocalStore
+import com.example.espoti.data.local.StatsLocalStore
 
 // ============================================================================
 // APP CONTAINER (manual dependency injection for the Sprint 3 layers)
@@ -82,6 +86,7 @@ object AppContainer {
     private val sqliteFriends by lazy { SqliteFriendsLocalStore(database) }
     private val sqliteNotifications by lazy { SqliteNotificationsLocalStore(database) }
     private val sqlitePendingActions by lazy { SqlitePendingActionStore(database) }
+    private val sqliteStats by lazy { SqliteStatsLocalStore(database) }
 
     val profileStore: ProfileLocalStore
         get() = if (isReady) sqliteProfiles else InMemoryProfileLocalStore()
@@ -94,6 +99,9 @@ object AppContainer {
 
     val pendingActions: PendingActionStore
         get() = if (isReady) sqlitePendingActions else InMemoryPendingActionStore()
+
+    val statsStore: StatsLocalStore
+        get() = if (isReady) sqliteStats else InMemoryStatsLocalStore()
 
 
     // ---- Local files -------------------------------------------------------
@@ -127,6 +135,7 @@ object AppContainer {
 
     private val sharedUserCache by lazy { UserCache() }
     private val sharedFriendCodeCache by lazy { FriendCodeCache() }
+    private val sharedStatsCache by lazy { StatsCache() }
 
     private val sharedUserRepository by lazy {
         CachingUserRepository(
@@ -156,6 +165,9 @@ object AppContainer {
             FriendCodeCache()
         }
 
+    val statsCache: StatsCache
+        get() = if (isReady) sharedStatsCache else StatsCache()
+
     /** User reads and friend-code lookups share the app-wide caches. */
     val userRepository: UserRepository
         get() = if (isReady) {
@@ -176,19 +188,22 @@ object AppContainer {
 
     /**
      * Logout: forget what was saved for [uid] (profile, friends, notifications,
-     * cached users), so the next account on this phone never sees it. Pending
+     * stats, cached users), so the next account on this phone never sees it. Pending
      * changes are kept: they are sent when the same user logs in again.
      */
     fun clearUserData(uid: String) {
         userCache.clear()
         friendCodeCache.clear()
+        statsCache.clear()
         val profiles = profileStore
         val friends = friendsStore
         val notifications = notificationsStore
+        val stats = statsStore
         appScope.launch {
             profiles.clear(uid)
             friends.clear(uid)
             notifications.clear(uid)
+            stats.clear(uid)
         }
     }
 

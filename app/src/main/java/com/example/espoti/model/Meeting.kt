@@ -4,6 +4,7 @@ import com.example.espoti.model.domain.MeetingEvent
 import com.example.espoti.model.domain.MeetingLifecycle
 import com.example.espoti.model.domain.Place
 import com.example.espoti.model.domain.StatusMeeting
+import java.time.ZoneId
 import java.util.Locale
 
 // ============================================================================
@@ -39,9 +40,11 @@ data class Meeting(
 fun MeetingEvent.toUiMeeting(
     uid: String,
     place: Place?,
-    now: Long = System.currentTimeMillis()
+    now: Long = System.currentTimeMillis(),
+    // Looked up once per meeting (ZoneId.systemDefault() copies the TimeZone).
+    zone: ZoneId = ZoneId.systemDefault()
 ): Meeting {
-    val status = MeetingLifecycle.effectiveStatus(this, now)
+    val status = MeetingLifecycle.effectiveStatus(this, now, zone)
     val voting = status == StatusMeeting.VOTING
     return Meeting(
         id = id,
@@ -49,7 +52,7 @@ fun MeetingEvent.toUiMeeting(
         rating = if (voting) 0 else place?.rating?.stars ?: 0,
         latitude = place?.location?.latitude?.takeIf { place.location.latitude != 0.0 },
         longitude = place?.location?.longitude?.takeIf { place.location.longitude != 0.0 },
-        startsAtEpochMillis = MeetingLifecycle.startsAt(date, time),
+        startsAtEpochMillis = MeetingLifecycle.startsAt(date, time, zone),
         status = status,
         votingDeadline = votingDeadline.takeIf { it > 0 },
         hasVoted = uid in votes,

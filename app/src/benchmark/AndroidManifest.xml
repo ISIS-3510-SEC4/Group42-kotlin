@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "benchmark" build type only: release-like (not debuggable) but profileable
+     from adb/Android Studio, plus the micro-benchmark trigger (Sprint 4 evidence). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <application>
+        <profileable android:shell="true" tools:targetApi="29" />
+        <receiver
+            android:name=".perf.BenchmarkReceiver"
+            android:exported="true"
+            tools:ignore="ExportedReceiver" />
+    </application>
+</manifest>

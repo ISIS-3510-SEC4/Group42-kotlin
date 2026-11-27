@@ -9,6 +9,8 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 // ============================================================================
 // MEETING LIFECYCLE TEST
@@ -35,6 +37,44 @@ class MeetingLifecycleTest {
         assertEquals(LocalTime.of(6, 0), MeetingLifecycle.parseMeetingTime("6 AM"))
         assertNull(MeetingLifecycle.parseMeetingTime("after lunch"))
         assertNull(MeetingLifecycle.parseMeetingTime(""))
+    }
+
+    @Test
+    fun parseMeetingTime_moreFormats() {
+        assertEquals(LocalTime.of(6, 30), MeetingLifecycle.parseMeetingTime("06:30"))
+        assertEquals(LocalTime.of(7, 45), MeetingLifecycle.parseMeetingTime("  7:45 "))
+        assertEquals(LocalTime.of(0, 0), MeetingLifecycle.parseMeetingTime("12 am"))
+        assertEquals(LocalTime.of(12, 15), MeetingLifecycle.parseMeetingTime("12:15PM"))
+        assertNull(MeetingLifecycle.parseMeetingTime("25:00"))
+        assertNull(MeetingLifecycle.parseMeetingTime("6:5"))
+        assertNull(MeetingLifecycle.parseMeetingTime("13 PM"))
+        assertNull(MeetingLifecycle.parseMeetingTime("18"))
+    }
+
+    /**
+     * The hand-written parser (Sprint 4 micro-optimization) must accept and
+     * return exactly what the previous DateTimeFormatter version did.
+     */
+    @Test
+    fun parseMeetingTime_sameResultsAsTheFormatterVersion() {
+        val patterns = listOf("H:mm", "h:mm a", "h a", "ha", "h:mma")
+            .map { DateTimeFormatter.ofPattern(it, Locale.US) }
+        fun reference(text: String): LocalTime? {
+            val normalized = text.trim().uppercase(Locale.US)
+            if (normalized.isEmpty()) return null
+            return patterns.firstNotNullOfOrNull { runCatching { LocalTime.parse(normalized, it) }.getOrNull() }
+        }
+
+        val hours = (0..25).map { it.toString() } + (0..9).map { "0$it" } + listOf("007", "012", "")
+        val minutes = listOf("", ":") + (0..61).map { ":%02d".format(it) } + listOf(":5", ":123", ":ab")
+        val suffixes = listOf("", " am", " PM", "am", "Pm", "  pm", " xm", " a", "m", " pmx", "h")
+        val inputs = mutableListOf("", " ", "after lunch", "noon", ":30", "6:00 p.m.", "\t18:00\n")
+        for (h in hours) for (m in minutes) for (suffix in suffixes) inputs += "$h$m$suffix"
+        inputs += inputs.map { " $it " }
+
+        for (text in inputs) {
+            assertEquals("\"$text\"", reference(text), MeetingLifecycle.parseMeetingTime(text))
+        }
     }
 
     @Test
