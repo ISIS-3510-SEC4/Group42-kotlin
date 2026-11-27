@@ -31,16 +31,25 @@ interface RecommendationScoringStrategy {
 }
 
 /** Orders and scores a candidate list with the given strategy (best first, stable tie-break). */
+
 fun List<Recommendation>.rankedBy(
     strategy: RecommendationScoringStrategy,
     context: RecommendationContext = RecommendationContext()
-): List<Recommendation> =
-    map { it.copy(score = strategy.score(it, context)) }
-        .sortedWith(
-            compareByDescending<Recommendation> { it.score }
-                .thenBy { it.name }
-                .thenBy { it.placeId }
-        )
+): List<Recommendation> {
+
+    val scored = mapTo(ArrayList<Recommendation>(size)) {
+        it.copy(score = strategy.score(it, context))
+    }
+
+    scored.sortWith(
+        compareByDescending<Recommendation> { it.score }
+            .thenBy { it.name }
+            .thenBy { it.placeId }
+    )
+
+    return scored
+}
+
 
 // ---------------------------------------------------------------------------
 // Concrete strategies

@@ -31,6 +31,21 @@ jobs:
       - name: Set up Gradle (wrapper validation + cache)
         uses: gradle/actions/setup-gradle@v4
 
+      # With an empty cache (e.g. PR runs, read-only cache) the first resolution
+      # of the settings/build plugins (foojay, AGP, Kotlin, google-services) can
+      # fail on a transient network error from the Gradle Plugin Portal. Warm it
+      # up with retries so a network flake doesn't fail the whole run.
+      - name: Resolve Gradle plugins (with retries)
+        run: |
+          for attempt in 1 2 3; do
+            if ./gradlew help --no-configuration-cache; then
+              exit 0
+            fi
+            echo "::warning::Gradle plugin resolution failed (attempt $attempt/3), retrying in $((attempt * 20)) s"
+            sleep $((attempt * 20))
+          done
+          exit 1
+
       - name: Build debug APK and run unit tests
         run: ./gradlew :app:assembleDebug :app:testDebugUnitTest --stacktrace
 

@@ -62,6 +62,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.key
 
 
 /**
@@ -445,32 +446,32 @@ private fun VotingDetail(
                     selectedCity = ""
 
                     // Reverse geocoding: obtain the address from the map coordinates.
-                    if(isOnline){
-                    scope.launch {
-                        try {
-                            val address = withContext(Dispatchers.IO) {
-                                val geocoder = Geocoder(context, Locale.getDefault())
+                    if (isOnline) {
+                        scope.launch {
+                            try {
+                                val address = withContext(Dispatchers.IO) {
+                                    val geocoder = Geocoder(context, Locale.getDefault())
 
-                                @Suppress("DEPRECATION")
-                                geocoder.getFromLocation(latitude, longitude, 1)
-                                    ?.firstOrNull()
+                                    @Suppress("DEPRECATION")
+                                    geocoder.getFromLocation(latitude, longitude, 1)
+                                        ?.firstOrNull()
+                                }
+
+                                if (address != null) {
+                                    selectedAddress =
+                                        address.getAddressLine(0) ?: selectedAddress
+
+                                    selectedCity = address.locality
+                                        ?: address.subAdminArea
+                                                ?: address.adminArea
+                                                ?: ""
+
+                                    addressQuery = selectedAddress
+                                }
+                            } catch (_: Exception) {
+                                // The selected coordinates remain valid if reverse geocoding fails.
                             }
-
-                            if (address != null) {
-                                selectedAddress =
-                                    address.getAddressLine(0) ?: selectedAddress
-
-                                selectedCity = address.locality
-                                    ?: address.subAdminArea
-                                            ?: address.adminArea
-                                            ?: ""
-
-                                addressQuery = selectedAddress
-                            }
-                        } catch (_: Exception) {
-                            // The selected coordinates remain valid if reverse geocoding fails.
                         }
-                    }
                     }
                 }
             )
@@ -573,35 +574,46 @@ private fun VotingDetail(
                 }
             }
 
+
             candidates.forEach { place ->
-                val votes = voteCounts[place.placeId] ?: 0
-                val distance = place.distanceKm
-                val minutes = TransportFilterCalculator.walkingMinutes(distance)
 
-                val transportText =
-                    if (distance != null && minutes != null) {
-                        String.format(
-                            Locale.US,
-                            "%.2f km · ~%d min walking",
-                            distance,
-                            minutes
-                        )
-                    } else {
-                        "Distance unavailable"
+                key(place.placeId) {
+
+                    val votes = voteCounts[place.placeId] ?: 0
+                    val distance = place.distanceKm
+
+                    val transportText = remember(distance) {
+                        val minutes =
+                            TransportFilterCalculator.walkingMinutes(distance)
+
+                        if (distance != null && minutes != null) {
+                            String.format(
+                                Locale.US,
+                                "%.2f km · ~%d min walking",
+                                distance,
+                                minutes
+                            )
+                        } else {
+                            "Distance unavailable"
+                        }
                     }
 
-                val votesText = if (votes == 1) "1 vote" else "$votes votes"
-                RecommendationCard(
-                    title = place.name,
-                    rating = place.rating,
-                    subtitle = "$transportText · $votesText",
-                    isSelected = selectedPlaceId == place.placeId,
-                    onClick = {
-                        viewModel.trackFeatureUsed("LOCATION_LIST")
-                        viewModel.onPlaceSelected(place.placeId)
-                    }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+                    val votesText =
+                        if (votes == 1) "1 vote" else "$votes votes"
+
+                    RecommendationCard(
+                        title = place.name,
+                        rating = place.rating,
+                        subtitle = "$transportText · $votesText",
+                        isSelected = selectedPlaceId == place.placeId,
+                        onClick = {
+                            viewModel.trackFeatureUsed("LOCATION_LIST")
+                            viewModel.onPlaceSelected(place.placeId)
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
             }
         }
     }
