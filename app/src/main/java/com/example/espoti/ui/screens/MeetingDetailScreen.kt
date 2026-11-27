@@ -63,6 +63,10 @@ import kotlinx.coroutines.withContext
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.key
+import android.content.Intent
+import android.content.ActivityNotFoundException
+import android.provider.CalendarContract
+import android.widget.Toast
 
 
 /**
@@ -635,6 +639,7 @@ private fun ConfirmedDetail(
 ) {
     val status = viewModel.contexts[meeting.id]
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     Scaffold { innerPadding ->
 
         Column(
@@ -644,7 +649,6 @@ private fun ConfirmedDetail(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
-                .clickable{ onBackClick()}
                 .padding(horizontal = 4.dp)
         ) {
 
@@ -733,6 +737,105 @@ private fun ConfirmedDetail(
 
             meeting.startsAtEpochMillis?.let { start ->
                 Text(text = "Meeting: ${formatDateTime(start)}")
+            }
+
+
+            meeting.startsAtEpochMillis?.let { startMillis ->
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_INSERT).apply {
+                            data = CalendarContract.Events.CONTENT_URI
+
+                            putExtra(
+                                CalendarContract.EXTRA_EVENT_BEGIN_TIME,
+                                startMillis
+                            )
+
+                            putExtra(
+                                CalendarContract.EXTRA_EVENT_END_TIME,
+                                startMillis + 60L * 60L * 1000L
+                            )
+
+                            putExtra(
+                                CalendarContract.Events.TITLE,
+                                "Espoti - ${meeting.name}"
+                            )
+
+                            putExtra(
+                                CalendarContract.Events.EVENT_LOCATION,
+                                meeting.name
+                            )
+
+                            putExtra(
+                                CalendarContract.Events.DESCRIPTION,
+                                "Meeting organized with Espoti"
+                            )
+                        }
+
+                        try {
+                            context.startActivity(intent)
+                        } catch (_: ActivityNotFoundException) {
+                            Toast.makeText(
+                                context,
+                                "No calendar application available",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Add to calendar")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        val message = buildString {
+                            appendLine("Espoti Meeting")
+                            appendLine()
+                            appendLine("Place: ${meeting.name}")
+                            appendLine("Date: ${formatDateTime(startMillis)}")
+
+                            val latitude = meeting.latitude
+                            val longitude = meeting.longitude
+
+                            if (latitude != null && longitude != null) {
+                                appendLine()
+                                appendLine(
+                                    "Location: https://www.google.com/maps/search/?api=1&query=$latitude,$longitude"
+                                )
+                            }
+                        }
+
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, message)
+                        }
+
+                        try {
+                            context.startActivity(
+                                Intent.createChooser(
+                                    shareIntent,
+                                    "Share meeting"
+                                )
+                            )
+                        } catch (_: ActivityNotFoundException) {
+                            Toast.makeText(
+                                context,
+                                "No sharing application available",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Share meeting details")
+                }
+
             }
 
             MeetingArrivalStatus(
