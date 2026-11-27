@@ -789,6 +789,53 @@ private fun ConfirmedDetail(
                 ) {
                     Text("Add to calendar")
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        val message = buildString {
+                            appendLine("Espoti Meeting")
+                            appendLine()
+                            appendLine("Place: ${meeting.name}")
+                            appendLine("Date: ${formatDateTime(startMillis)}")
+
+                            val latitude = meeting.latitude
+                            val longitude = meeting.longitude
+
+                            if (latitude != null && longitude != null) {
+                                appendLine()
+                                appendLine(
+                                    "Location: https://www.google.com/maps/search/?api=1&query=$latitude,$longitude"
+                                )
+                            }
+                        }
+
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, message)
+                        }
+
+                        try {
+                            context.startActivity(
+                                Intent.createChooser(
+                                    shareIntent,
+                                    "Share meeting"
+                                )
+                            )
+                        } catch (_: ActivityNotFoundException) {
+                            Toast.makeText(
+                                context,
+                                "No sharing application available",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Share meeting details")
+                }
+
             }
 
             MeetingArrivalStatus(
