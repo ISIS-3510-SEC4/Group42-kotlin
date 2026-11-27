@@ -113,6 +113,9 @@ fun CreateMeetingScreen1(
     val formError by viewModel.formError
     val friendSelectionError by viewModel.friendSelectionError
     val saveMeetingMessage by viewModel.saveMeetingMessage
+    val isSavingDraft by viewModel.isSavingDraft
+    val draftError by viewModel.draftError
+    val draftMessage by viewModel.draftMessage
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -514,10 +517,44 @@ fun CreateMeetingScreen1(
                 }
                 ,
                 modifier = Modifier
-                    .width(130.dp)
+                    .width(160.dp)
                     .height(42.dp)
                     .align(Alignment.CenterHorizontally)
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            EspotiPrimaryButton(
+                text = if (isSavingDraft) "Saving draft..." else "Save Draft",
+                onClick = { viewModel.saveMeetingDraft() },
+                modifier = Modifier
+                    .width(160.dp)
+                    .height(42.dp)
+                    .align(Alignment.CenterHorizontally)
+            )
+
+            draftError?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            draftMessage?.let { message ->
+                Text(
+                    text = message,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
         }
     }
     if (showMeetingCreatedDialog) {

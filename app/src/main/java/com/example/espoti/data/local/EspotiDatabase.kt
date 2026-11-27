@@ -24,6 +24,7 @@ import android.database.sqlite.SQLiteOpenHelper
 // SQLiteDatabase is thread-safe, and every store calls it from Dispatchers.IO
 // so disk access never runs on the main thread.
 // ============================================================================
+
 class EspotiDatabase(context: Context) :
     SQLiteOpenHelper(context.applicationContext, NAME, null, VERSION) {
 
@@ -42,6 +43,7 @@ class EspotiDatabase(context: Context) :
             )
             """.trimIndent()
         )
+
         db.execSQL(
             """
             CREATE TABLE $FRIENDS (
@@ -55,6 +57,7 @@ class EspotiDatabase(context: Context) :
             )
             """.trimIndent()
         )
+
         db.execSQL(
             """
             CREATE TABLE $NOTIFICATIONS (
@@ -71,9 +74,7 @@ class EspotiDatabase(context: Context) :
             )
             """.trimIndent()
         )
-        // UNIQUE(type, target_id) + REPLACE: a newer change to the same thing
-        // (e.g. editing the profile twice offline) replaces the older one, so
-        // only the latest version is sent.
+
         db.execSQL(
             """
             CREATE TABLE $PENDING_ACTIONS (
@@ -89,19 +90,59 @@ class EspotiDatabase(context: Context) :
             """.trimIndent()
         )
         createUserStats(db)
+        createMeetingDraftsTable(db)
+    }
+
+    private fun createMeetingDraftsTable(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS $MEETING_DRAFTS (
+                id TEXT PRIMARY KEY,
+                owner_uid TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+            )
+            """.trimIndent()
+        )
+
+        db.execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS idx_meeting_drafts_owner
+            ON $MEETING_DRAFTS(owner_uid, updated_at)
+            """.trimIndent()
+        )
     }
 
     // Step-by-step migrations: each version only adds what it introduced, so
     // pending_actions (changes not sent yet) and the other caches survive an
     // app update.
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 2) createUserStats(db)
+    override fun onUpgrade(
+        db: SQLiteDatabase,
+        oldVersion: Int,
+        newVersion: Int
+    ) {
+        // Version 1 -> 2: User statistics
+        if (oldVersion < 2) {
+            createUserStats(db)
+        }
+
+        // Version 2 -> 3: Meeting drafts
+        if (oldVersion < 3) {
+            createMeetingDraftsTable(db)
+        }
+
+        if (oldVersion < 4) {
+            createUserStats(db)
+            createMeetingDraftsTable(db)
+        }
     }
+
 
     /** v2: one JSON snapshot of "My stats" per user. */
     private fun createUserStats(db: SQLiteDatabase) {
         db.execSQL(
-            """
+            """ 
             CREATE TABLE IF NOT EXISTS $USER_STATS (
                 owner_uid TEXT PRIMARY KEY,
                 payload TEXT NOT NULL,
@@ -113,15 +154,17 @@ class EspotiDatabase(context: Context) :
 
     companion object {
         const val NAME = "espoti.db"
-        const val VERSION = 2
+        const val VERSION = 4
 
         const val USERS = "users"
         const val FRIENDS = "friends"
         const val NOTIFICATIONS = "notifications"
         const val PENDING_ACTIONS = "pending_actions"
         const val USER_STATS = "user_stats"
+        const val MEETING_DRAFTS = "meeting_drafts"
     }
 }
+
 
 // ---- Small cursor / values helpers shared by the SQLite stores -------------
 
