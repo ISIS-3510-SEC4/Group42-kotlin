@@ -60,6 +60,7 @@ import com.example.espoti.data.repository.AuthRepository
 import com.example.espoti.di.AppContainer
 import com.example.espoti.ui.components.OfflineBanner
 import com.example.espoti.model.domain.StatusMeeting
+import com.example.espoti.ui.screens.MyDraftsScreen
 
 // ============================================================================
 // SCREEN ROUTES
@@ -107,6 +108,12 @@ sealed class Screen(
     // Create meeting is opened from any screen and returns to wherever it was opened.
     object CreateMeeting1 : Screen("create_meeting1", BottomNavItem.HOME, BackBehavior.PREVIOUS)
     object CreateMeeting2 : Screen("create_meeting2", BottomNavItem.HOME, BackBehavior.PREVIOUS)
+    object MyDrafts : Screen("my_drafts", BottomNavItem.HOME, BackBehavior.PREVIOUS)
+
+    object CreateMeetingDraft : Screen("create_meeting_draft/{draftId}", BottomNavItem.HOME, BackBehavior.PREVIOUS) {
+        fun createRoute(draftId: String): String =
+            "create_meeting_draft/$draftId"
+    }
     object StartingLocation : Screen(
         "starting_location/{meetingId}",
         BottomNavItem.HOME,
@@ -134,7 +141,8 @@ sealed class Screen(
         private val all by lazy {
             listOf(
                 Welcome, Login, Register, Home, Meetings, CreateMeeting1, CreateMeeting2, StartingLocation,
-                MeetingDetail, Friends, Profile, EditProfile, Stats
+                MeetingDetail, Friends, Profile, EditProfile, Stats, MyDrafts,
+                CreateMeetingDraft
             )
         }
 
@@ -305,13 +313,14 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                         AnalyticsDependencies.tracker.featureUsed(feature = "HOME_MEETINGS", meetingId = meetingId)
                         navController.navigate(Screen.MeetingDetail.createRoute(meetingId))
                     },
-                    onSeeAllMeetingsClick = { navController.navigateToTab(Screen.Meetings) }
+                    onSeeAllMeetingsClick = { navController.navigateToTab(Screen.Meetings) },
+                    onMyDraftsClick = { navController.navigate(Screen.MyDrafts.route) }
                 )
             }
             composable(Screen.CreateMeeting1.route) { backStackEntry ->
+
                 val createMeetingViewModel: CreateMeetingViewModel =
                     viewModel(backStackEntry)
-
 
                 CreateMeetingScreen1(
                     viewModel = createMeetingViewModel,
@@ -321,6 +330,40 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     onMeetingCreated = {
                         navController.navigate(Screen.Home.route) {
                             popUpTo(Screen.CreateMeeting1.route) {
+                                inclusive = true
+                            }
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+
+            composable(
+                route = Screen.CreateMeetingDraft.route,
+                arguments = listOf(
+                    navArgument("draftId") {
+                        type = NavType.StringType
+                    }
+                )
+            ) { backStackEntry ->
+
+                val draftId = backStackEntry.arguments?.getString("draftId")
+
+                val createMeetingViewModel: CreateMeetingViewModel =
+                    viewModel(backStackEntry)
+
+                LaunchedEffect(draftId) {
+                    draftId?.let {
+                        createMeetingViewModel.loadMeetingDraft(it)
+                    }
+                }
+
+                CreateMeetingScreen1(
+                    viewModel = createMeetingViewModel,
+                    onScheduleClick = {},
+                    onMeetingCreated = {
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo(Screen.CreateMeetingDraft.route) {
                                 inclusive = true
                             }
                             launchSingleTop = true
@@ -369,6 +412,17 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     }
                 )
             }
+
+            composable(Screen.MyDrafts.route) {
+                MyDraftsScreen(
+                    onContinueEditing = { draftId ->
+                        navController.navigate(
+                            Screen.CreateMeetingDraft.createRoute(draftId)
+                        )
+                    }
+                )
+            }
+
             composable(
                 Screen.Meetings.route,
                 arguments = listOf(

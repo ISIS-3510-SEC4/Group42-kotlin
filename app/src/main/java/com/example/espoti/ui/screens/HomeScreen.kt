@@ -70,6 +70,7 @@ fun HomeScreen(
     onNotificationsClick: () -> Unit = {},
     onMeetingClick: (String) -> Unit = {},
     onSeeAllMeetingsClick: () -> Unit = {},
+    onMyDraftsClick: () -> Unit = {},
     viewModel: HomeViewModel = viewModel()
 ) {
     val userName by viewModel.userName
@@ -92,7 +93,8 @@ fun HomeScreen(
         onNotificationsClick = onNotificationsClick,
         onCreateMeetingClick = onCreateMeetingClick,
         onMeetingClick = onMeetingClick,
-        onSeeAllMeetingsClick = onSeeAllMeetingsClick
+        onSeeAllMeetingsClick = onSeeAllMeetingsClick,
+        onMyDraftsClick = onMyDraftsClick
     )
 }
 
@@ -107,7 +109,8 @@ private fun HomeContent(
     onNotificationsClick: () -> Unit,
     onCreateMeetingClick: () -> Unit,
     onMeetingClick: (String) -> Unit,
-    onSeeAllMeetingsClick: () -> Unit
+    onSeeAllMeetingsClick: () -> Unit,
+    onMyDraftsClick: () -> Unit
 ) {
     Scaffold { innerPadding ->
         Column(
@@ -129,6 +132,14 @@ private fun HomeContent(
             EspotiPrimaryButton(
                 text = "Create new meeting",
                 onClick = onCreateMeetingClick
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+
+            EspotiPrimaryButton(
+                text = "My Drafts",
+                onClick = onMyDraftsClick
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -454,7 +465,8 @@ private fun HomeScreenPreview() {
             onNotificationsClick = {},
             onCreateMeetingClick = {},
             onMeetingClick = {},
-            onSeeAllMeetingsClick = {}
+            onSeeAllMeetingsClick = {},
+            onMyDraftsClick = {}
         )
     }
 }

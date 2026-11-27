@@ -38,9 +38,11 @@ import com.example.espoti.model.domain.PlaceCategory
 import com.example.espoti.model.domain.Rating
 import com.example.espoti.di.AppContainer
 import com.example.espoti.data.connectivity.ConnectivityObserver
+import com.example.espoti.data.local.MeetingDraft
 import com.example.espoti.data.local.PendingAction
 import com.example.espoti.data.local.PendingActionStore
 import com.example.espoti.data.sync.SyncScheduler
+import com.example.espoti.data.local.MeetingDraftStore
 /**
  * State of the create-meeting flow. It is shared by CreateMeeting1 and
  * CreateMeeting2 (both get the same instance from navigation), so what the
@@ -72,7 +74,10 @@ class CreateMeetingViewModel(
         AppContainer.pendingActions,
 
     private val syncScheduler: SyncScheduler =
-        AppContainer.syncScheduler
+        AppContainer.syncScheduler,
+
+    private val meetingDraftStore: MeetingDraftStore =
+            AppContainer.meetingDraftStore
 
 
 ) : ViewModel() {
@@ -85,6 +90,7 @@ class CreateMeetingViewModel(
             placeRepository = placeRepository
         )
     }
+
     // "Who will go?": the user's accepted friends and the ones invited.
     private val _friends = mutableStateOf<List<User>>(emptyList())
     val friends: State<List<User>> = _friends
@@ -93,6 +99,7 @@ class CreateMeetingViewModel(
     val selectedFriendIds: State<Set<String>> = _selectedFriendIds
     private val _friendSelectionError = mutableStateOf<String?>(null)
     val friendSelectionError: State<String?> = _friendSelectionError
+
     // When the voting closes (epoch millis). Null = default, see votingDeadlineFor.
     private val _votingDeadlineMillis = mutableStateOf<Long?>(null)
     val votingDeadlineMillis: State<Long?> = _votingDeadlineMillis
@@ -186,6 +193,23 @@ class CreateMeetingViewModel(
     private val _manualPlaces = mutableStateOf<List<Place>>(emptyList())
     val manualPlaces: State<List<Place>> = _manualPlaces
 
+    // Meeting drafts
+    private val _meetingDrafts = mutableStateOf<List<MeetingDraft>>(emptyList())
+    val meetingDrafts: State<List<MeetingDraft>> = _meetingDrafts
+
+    private val _isSavingDraft = mutableStateOf(false)
+    val isSavingDraft: State<Boolean> = _isSavingDraft
+
+    private val _draftError = mutableStateOf<String?>(null)
+    val draftError: State<String?> = _draftError
+
+    private val _draftMessage = mutableStateOf<String?>(null)
+    val draftMessage: State<String?> = _draftMessage
+
+    // Keeps track of the draft currently being edited.
+    private var currentDraftId: String? = null
+    private var currentDraftCreatedAt: Long? = null
+
     init {
         loadFriends()
     }
@@ -214,6 +238,7 @@ class CreateMeetingViewModel(
                     "A meeting can have up to 8 people, including you."
                 return
             }
+
             else -> current + friendId
         }
     }
@@ -976,6 +1001,182 @@ class CreateMeetingViewModel(
 
         return _formError.value == null
     }
+
+
+    fun saveMeetingDraft() {
+        if (_isSavingDraft.value) return
+
+        val uid = currentUserId()
+        if (uid == null) {
+            _draftError.value = "You need to be signed in to save a draft."
+            return
+        }
+
+        _isSavingDraft.value = true
+        _draftError.value = null
+        _draftMessage.value = null
+
+        viewModelScope.launch {
+            try {
+                val now = clock()
+
+                val draft = MeetingDraft(
+                    id = currentDraftId ?: UUID.randomUUID().toString(),
+                    ownerUid = uid,
+
+                    whatToDo = _whatToDo.value,
+                    date = _selectedDate.value?.toString(),
+                    time = _selectedTime.value?.toString(),
+
+                    latitude = _selectedLatitude.value,
+                    longitude = _selectedLongitude.value,
+
+                    invitedFriendIds = _selectedFriendIds.value.toSet(),
+
+                    votingDeadlineMillis = _votingDeadlineMillis.value,
+
+                    createdAt = currentDraftCreatedAt ?: now,
+                    updatedAt = now
+                )
+
+                meetingDraftStore.save(draft)
+
+                currentDraftId = draft.id
+                currentDraftCreatedAt = draft.createdAt
+
+                _draftMessage.value = "Meeting draft saved successfully."
+
+                loadMeetingDraftsInternal(uid)
+
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _draftError.value =
+                    "Couldn't save the meeting draft. Please try again."
+            } finally {
+                _isSavingDraft.value = false
+            }
+        }
+    }
+
+
+    fun loadMeetingDrafts() {
+        val uid = currentUserId() ?: return
+
+        viewModelScope.launch {
+            try {
+                loadMeetingDraftsInternal(uid)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _draftError.value =
+                    "Couldn't load your meeting drafts."
+            }
+        }
+    }
+
+    private suspend fun loadMeetingDraftsInternal(uid: String) {
+        _meetingDrafts.value = meetingDraftStore.getDrafts(uid)
+    }
+
+
+    fun loadMeetingDraft(draftId: String) {
+        val uid = currentUserId() ?: return
+
+        viewModelScope.launch {
+            try {
+                val draft = meetingDraftStore.getDraft(
+                    id = draftId,
+                    ownerUid = uid
+                )
+
+                if (draft == null) {
+                    _draftError.value = "Meeting draft not found."
+                    return@launch
+                }
+
+                _whatToDo.value = draft.whatToDo
+
+                _selectedDate.value = draft.date?.let {
+                    LocalDate.parse(it)
+                }
+
+                _selectedTime.value = draft.time?.let {
+                    LocalTime.parse(it)
+                }
+
+                _selectedLatitude.value = draft.latitude
+                _selectedLongitude.value = draft.longitude
+
+                _selectedFriendIds.value = draft.invitedFriendIds
+
+                _votingDeadlineMillis.value =
+                    draft.votingDeadlineMillis
+
+                // Remember the draft so the next save updates it.
+                currentDraftId = draft.id
+                currentDraftCreatedAt = draft.createdAt
+
+                // Clear errors from a previous form session.
+                _dateError.value = null
+                _timeError.value = null
+                _votingDeadlineError.value = null
+                _friendSelectionError.value = null
+                _formError.value = null
+                _saveMeetingError.value = null
+
+                // Clear data that belongs to a previous recommendation session.
+                _manualPlaces.value = emptyList()
+                _selectedPlaceId.value = null
+                selectedRecommendation = null
+                _recommendationState.value = RecommendationUiState()
+                viewedRecommendationIds.clear()
+
+                // A resumed draft starts again from the details step.
+                currentStep = STEP_DETAILS
+                flowCompleted = false
+
+                _draftMessage.value = "Meeting draft loaded."
+
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _draftError.value =
+                    "Couldn't load the meeting draft."
+            }
+        }
+    }
+
+
+    fun deleteMeetingDraft(draftId: String) {
+        val uid = currentUserId() ?: return
+
+        viewModelScope.launch {
+            try {
+                meetingDraftStore.delete(
+                    id = draftId,
+                    ownerUid = uid
+                )
+
+                if (currentDraftId == draftId) {
+                    currentDraftId = null
+                    currentDraftCreatedAt = null
+                }
+
+                loadMeetingDraftsInternal(uid)
+
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                _draftError.value =
+                    "Couldn't delete the meeting draft."
+            }
+        }
+    }
+
+
+
+
 
     companion object {
         const val MAX_ACTIVITY_LENGTH = 50
