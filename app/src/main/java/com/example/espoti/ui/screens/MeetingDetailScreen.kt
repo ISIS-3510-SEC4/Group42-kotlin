@@ -75,7 +75,8 @@ import androidx.compose.runtime.key
 fun MeetingDetailScreen(
     viewModel: MeetingDetailViewModel,
     onBackClick: () -> Unit,
-    onVoted: (meetingId: String) -> Unit
+    onVoted: (meetingId: String) -> Unit,
+    onNotesClick: (meetingId: String) -> Unit
 ) {
     val meeting by viewModel.meeting
     val isLoading by viewModel.isLoading
@@ -121,7 +122,8 @@ fun MeetingDetailScreen(
         else -> ConfirmedDetail(
             meeting = current,
             viewModel = viewModel,
-            onBackClick = onBackClick
+            onBackClick = onBackClick,
+            onNotesClick = onNotesClick
         )
     }
 }
@@ -631,7 +633,8 @@ private data class ManualPlaceSearchResult(
 private fun ConfirmedDetail(
     meeting: Meeting,
     viewModel: MeetingDetailViewModel,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onNotesClick: (meetingId: String) -> Unit
 ) {
     val status = viewModel.contexts[meeting.id]
     val scope = rememberCoroutineScope()
@@ -644,7 +647,6 @@ private fun ConfirmedDetail(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 16.dp)
-                .clickable{ onBackClick()}
                 .padding(horizontal = 4.dp)
         ) {
 
@@ -672,6 +674,7 @@ private fun ConfirmedDetail(
                         color = BrandBrown,
                         modifier = Modifier
                             .padding(horizontal = 4.dp)
+                            .clickable { onBackClick() }
                     )
                 }
             }
@@ -734,6 +737,19 @@ private fun ConfirmedDetail(
             meeting.startsAtEpochMillis?.let { start ->
                 Text(text = "Meeting: ${formatDateTime(start)}")
             }
+
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            OutlinedButton(
+                onClick = {
+                    onNotesClick(meeting.id)
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Meeting Notes")
+            }
+
 
             MeetingArrivalStatus(
                 status = status,

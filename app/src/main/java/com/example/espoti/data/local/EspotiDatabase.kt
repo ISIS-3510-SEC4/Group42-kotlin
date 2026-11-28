@@ -89,13 +89,24 @@ class EspotiDatabase(context: Context) :
             """.trimIndent()
         )
         createUserStats(db)
+        createMeetingNotes(db)
     }
 
     // Step-by-step migrations: each version only adds what it introduced, so
     // pending_actions (changes not sent yet) and the other caches survive an
     // app update.
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion < 2) createUserStats(db)
+    override fun onUpgrade(
+        db: SQLiteDatabase,
+        oldVersion: Int,
+        newVersion: Int
+    ) {
+        if (oldVersion < 2) {
+            createUserStats(db)
+        }
+
+        if (oldVersion < 3) {
+            createMeetingNotes(db)
+        }
     }
 
     /** v2: one JSON snapshot of "My stats" per user. */
@@ -111,15 +122,31 @@ class EspotiDatabase(context: Context) :
         )
     }
 
+    private fun createMeetingNotes(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+        CREATE TABLE IF NOT EXISTS $MEETING_NOTES (
+            owner_uid TEXT NOT NULL,
+            meeting_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (owner_uid, meeting_id)
+        )
+        """.trimIndent()
+        )
+    }
+
+
     companion object {
         const val NAME = "espoti.db"
-        const val VERSION = 2
+        const val VERSION = 3
 
         const val USERS = "users"
         const val FRIENDS = "friends"
         const val NOTIFICATIONS = "notifications"
         const val PENDING_ACTIONS = "pending_actions"
         const val USER_STATS = "user_stats"
+        const val MEETING_NOTES = "meeting_notes"
     }
 }
 

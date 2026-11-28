@@ -42,6 +42,9 @@ import com.example.espoti.data.cache.StatsCache
 import com.example.espoti.data.local.InMemoryStatsLocalStore
 import com.example.espoti.data.local.SqliteStatsLocalStore
 import com.example.espoti.data.local.StatsLocalStore
+import com.example.espoti.data.local.MeetingNotesLocalStore
+import com.example.espoti.data.local.SqliteMeetingNotesLocalStore
+import com.example.espoti.data.local.InMemoryMeetingNotesLocalStore
 
 // ============================================================================
 // APP CONTAINER (manual dependency injection for the Sprint 3 layers)
@@ -87,6 +90,9 @@ object AppContainer {
     private val sqliteNotifications by lazy { SqliteNotificationsLocalStore(database) }
     private val sqlitePendingActions by lazy { SqlitePendingActionStore(database) }
     private val sqliteStats by lazy { SqliteStatsLocalStore(database) }
+    private val sqliteMeetingNotes by lazy {
+        SqliteMeetingNotesLocalStore(database)
+    }
 
     val profileStore: ProfileLocalStore
         get() = if (isReady) sqliteProfiles else InMemoryProfileLocalStore()
@@ -102,7 +108,12 @@ object AppContainer {
 
     val statsStore: StatsLocalStore
         get() = if (isReady) sqliteStats else InMemoryStatsLocalStore()
-
+    val meetingNotesStore: MeetingNotesLocalStore
+        get() = if (isReady) {
+            sqliteMeetingNotes
+        } else {
+            InMemoryMeetingNotesLocalStore()
+        }
 
     // ---- Local files -------------------------------------------------------
 
@@ -204,6 +215,7 @@ object AppContainer {
             friends.clear(uid)
             notifications.clear(uid)
             stats.clear(uid)
+            meetingNotesStore.clear(uid)
         }
     }
 
