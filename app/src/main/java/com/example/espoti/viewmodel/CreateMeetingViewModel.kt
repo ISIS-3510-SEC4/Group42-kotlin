@@ -431,6 +431,18 @@ class CreateMeetingViewModel(
             meetingRepository.createMeeting(meeting).fold(
                 onSuccess = { meetingId ->
                     activeMeetingId = meetingId
+
+                    currentDraftId?.let { draftId ->
+                        analyticsTracker.trackEvent(
+                            type = AnalyticsEventType.DRAFT_COMPLETED,
+                            meetingId = meetingId,
+                            step = "MEETING_DRAFTS",
+                            metadata = mapOf(
+                                "draftId" to draftId
+                            )
+                        )
+                    }
+
                     _isSavingMeeting.value = false
                     _saveMeetingError.value = null
 
@@ -1019,7 +1031,7 @@ class CreateMeetingViewModel(
         viewModelScope.launch {
             try {
                 val now = clock()
-
+                val isNewDraft = currentDraftId == null
                 val draft = MeetingDraft(
                     id = currentDraftId ?: UUID.randomUUID().toString(),
                     ownerUid = uid,
@@ -1040,6 +1052,19 @@ class CreateMeetingViewModel(
                 )
 
                 meetingDraftStore.save(draft)
+
+                if (isNewDraft) {
+                    analyticsTracker.trackEvent(
+                        type = AnalyticsEventType.DRAFT_CREATED,
+                        step = "MEETING_DRAFTS",
+                        metadata = mapOf(
+                            "draftId" to draft.id
+                        )
+                    )
+                }
+
+                currentDraftId = draft.id
+                currentDraftCreatedAt = draft.createdAt
 
                 currentDraftId = draft.id
                 currentDraftCreatedAt = draft.createdAt
