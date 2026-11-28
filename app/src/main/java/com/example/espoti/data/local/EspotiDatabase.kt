@@ -136,6 +136,10 @@ class EspotiDatabase(context: Context) :
             createUserStats(db)
             createMeetingDraftsTable(db)
             createMeetingNotes(db)}
+
+        if (oldVersion < 5) {
+            createMeetingNotes(db)
+        }
     }
 
 
@@ -169,7 +173,7 @@ class EspotiDatabase(context: Context) :
 
     companion object {
         const val NAME = "espoti.db"
-        const val VERSION = 4
+        const val VERSION = 5
 
         const val USERS = "users"
         const val FRIENDS = "friends"
