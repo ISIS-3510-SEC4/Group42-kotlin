@@ -132,7 +132,7 @@ class EspotiDatabase(context: Context) :
             createMeetingDraftsTable(db)
         }
 
-        if (oldverion <4 ) {
+        if (oldVersion <4 ) {
             createUserStats(db)
             createMeetingDraftsTable(db)
             createMeetingNotes(db)}
