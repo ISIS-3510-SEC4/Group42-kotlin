@@ -90,6 +90,7 @@ class EspotiDatabase(context: Context) :
             """.trimIndent()
         )
         createUserStats(db)
+        createMeetingNotes(db)
         createMeetingDraftsTable(db)
     }
 
@@ -122,19 +123,22 @@ class EspotiDatabase(context: Context) :
         oldVersion: Int,
         newVersion: Int
     ) {
-        // Version 1 -> 2: User statistics
         if (oldVersion < 2) {
             createUserStats(db)
         }
 
-        // Version 2 -> 3: Meeting drafts
         if (oldVersion < 3) {
+            createMeetingNotes(db)
             createMeetingDraftsTable(db)
         }
 
-        if (oldVersion < 4) {
+        if (oldVersion <4 ) {
             createUserStats(db)
             createMeetingDraftsTable(db)
+            createMeetingNotes(db)}
+
+        if (oldVersion < 5) {
+            createMeetingNotes(db)
         }
     }
 
@@ -152,9 +156,24 @@ class EspotiDatabase(context: Context) :
         )
     }
 
+    private fun createMeetingNotes(db: SQLiteDatabase) {
+        db.execSQL(
+            """
+        CREATE TABLE IF NOT EXISTS $MEETING_NOTES (
+            owner_uid TEXT NOT NULL,
+            meeting_id TEXT NOT NULL,
+            content TEXT NOT NULL,
+            updated_at INTEGER NOT NULL,
+            PRIMARY KEY (owner_uid, meeting_id)
+        )
+        """.trimIndent()
+        )
+    }
+
+
     companion object {
         const val NAME = "espoti.db"
-        const val VERSION = 4
+        const val VERSION = 5
 
         const val USERS = "users"
         const val FRIENDS = "friends"
@@ -162,6 +181,7 @@ class EspotiDatabase(context: Context) :
         const val PENDING_ACTIONS = "pending_actions"
         const val USER_STATS = "user_stats"
         const val MEETING_DRAFTS = "meeting_drafts"
+        const val MEETING_NOTES = "meeting_notes"
     }
 }
 

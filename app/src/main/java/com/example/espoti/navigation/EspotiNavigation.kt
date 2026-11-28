@@ -61,6 +61,9 @@ import com.example.espoti.di.AppContainer
 import com.example.espoti.ui.components.OfflineBanner
 import com.example.espoti.model.domain.StatusMeeting
 import com.example.espoti.ui.screens.MyDraftsScreen
+import android.net.Uri
+import com.example.espoti.ui.screens.MeetingNotesScreen
+import com.example.espoti.viewmodel.MeetingNotesViewModel
 
 // ============================================================================
 // SCREEN ROUTES
@@ -89,6 +92,7 @@ sealed class Screen(
     // screen behaves correctly without extra work. Only screens that follow a
     // flow (auth, create meeting) or are the root (Welcome, Home) use PREVIOUS.
     val backBehavior: BackBehavior = BackBehavior.GO_HOME
+
 ) {
     /** What to pass to navigate() for a plain visit (routes with optional args override it). */
     open val path: String get() = route
@@ -129,6 +133,17 @@ sealed class Screen(
         }
 
     }
+
+    object MeetingNotes : Screen(
+        "meeting_notes/{meetingId}",
+        BottomNavItem.MEETINGS,
+        BackBehavior.PREVIOUS
+    ) {
+        fun createRoute(meetingId: String): String {
+            return "meeting_notes/${Uri.encode(meetingId)}"
+        }
+    }
+
     object Friends : Screen("friends", BottomNavItem.FRIENDS) // Amigos
     object Profile : Screen("profile", BottomNavItem.PROFILE) // Perfil
     // Opened from Profile's "Edit Profile" button; keeps the Profile tab
@@ -141,7 +156,7 @@ sealed class Screen(
         private val all by lazy {
             listOf(
                 Welcome, Login, Register, Home, Meetings, CreateMeeting1, CreateMeeting2, StartingLocation,
-                MeetingDetail, Friends, Profile, EditProfile, Stats, MyDrafts,
+                MeetingDetail, MeetingNotes, Friends, Profile, EditProfile, Stats, MyDrafts,
                 CreateMeetingDraft
             )
         }
@@ -486,6 +501,43 @@ fun EspotiNavHost(navController: NavHostController = rememberNavController()) {
                     onVoted = { meetingId ->
                         analyticsTracker.featureUsed("VOTE", meetingId = meetingId)
                         navController.showVotedMeeting(meetingId)
+                    },
+                    onNotesClick = { meetingId ->
+                        navController.navigate(
+                            Screen.MeetingNotes.createRoute(meetingId)
+                        )
+                    }
+                )
+            }
+
+            composable(
+                route = Screen.MeetingNotes.route,
+                arguments = listOf(
+                    navArgument("meetingId") {
+                        type = NavType.StringType
+                    }
+                )
+            ) { entry ->
+
+                val meetingId = entry.arguments
+                    ?.getString("meetingId")
+                    .orEmpty()
+
+                val notesViewModel: MeetingNotesViewModel = viewModel(
+                    entry,
+                    factory = viewModelFactory {
+                        initializer {
+                            MeetingNotesViewModel(
+                                meetingId = meetingId
+                            )
+                        }
+                    }
+                )
+
+                MeetingNotesScreen(
+                    viewModel = notesViewModel,
+                    onBackClick = {
+                        navController.popBackStack()
                     }
                 )
             }

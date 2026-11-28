@@ -45,6 +45,9 @@ import com.example.espoti.data.local.StatsLocalStore
 import com.example.espoti.data.local.MeetingDraftStore
 import com.example.espoti.data.local.SqliteMeetingDraftStore
 import com.example.espoti.data.local.InMemoryMeetingDraftStore
+import com.example.espoti.data.local.MeetingNotesLocalStore
+import com.example.espoti.data.local.SqliteMeetingNotesLocalStore
+import com.example.espoti.data.local.InMemoryMeetingNotesLocalStore
 
 // ============================================================================
 // APP CONTAINER (manual dependency injection for the Sprint 3 layers)
@@ -90,6 +93,9 @@ object AppContainer {
     private val sqliteNotifications by lazy { SqliteNotificationsLocalStore(database) }
     private val sqlitePendingActions by lazy { SqlitePendingActionStore(database) }
     private val sqliteStats by lazy { SqliteStatsLocalStore(database) }
+    private val sqliteMeetingNotes by lazy {
+        SqliteMeetingNotesLocalStore(database)
+    }
     private val sqliteMeetingDrafts by lazy { SqliteMeetingDraftStore(database) }
 
     val profileStore: ProfileLocalStore
@@ -106,7 +112,12 @@ object AppContainer {
 
     val statsStore: StatsLocalStore
         get() = if (isReady) sqliteStats else InMemoryStatsLocalStore()
-
+    val meetingNotesStore: MeetingNotesLocalStore
+        get() = if (isReady) {
+            sqliteMeetingNotes
+        } else {
+            InMemoryMeetingNotesLocalStore()
+        }
 
     val meetingDraftStore: MeetingDraftStore
         get() = if (isReady) { sqliteMeetingDrafts } else { InMemoryMeetingDraftStore() }
@@ -210,6 +221,7 @@ object AppContainer {
             friends.clear(uid)
             notifications.clear(uid)
             stats.clear(uid)
+            meetingNotesStore.clear(uid)
         }
     }
 
