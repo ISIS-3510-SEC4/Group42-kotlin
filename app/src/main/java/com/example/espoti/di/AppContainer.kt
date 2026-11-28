@@ -42,6 +42,9 @@ import com.example.espoti.data.cache.StatsCache
 import com.example.espoti.data.local.InMemoryStatsLocalStore
 import com.example.espoti.data.local.SqliteStatsLocalStore
 import com.example.espoti.data.local.StatsLocalStore
+import com.example.espoti.data.local.MeetingDraftStore
+import com.example.espoti.data.local.SqliteMeetingDraftStore
+import com.example.espoti.data.local.InMemoryMeetingDraftStore
 import com.example.espoti.data.local.MeetingNotesLocalStore
 import com.example.espoti.data.local.SqliteMeetingNotesLocalStore
 import com.example.espoti.data.local.InMemoryMeetingNotesLocalStore
@@ -93,6 +96,7 @@ object AppContainer {
     private val sqliteMeetingNotes by lazy {
         SqliteMeetingNotesLocalStore(database)
     }
+    private val sqliteMeetingDrafts by lazy { SqliteMeetingDraftStore(database) }
 
     val profileStore: ProfileLocalStore
         get() = if (isReady) sqliteProfiles else InMemoryProfileLocalStore()
@@ -115,6 +119,8 @@ object AppContainer {
             InMemoryMeetingNotesLocalStore()
         }
 
+    val meetingDraftStore: MeetingDraftStore
+        get() = if (isReady) { sqliteMeetingDrafts } else { InMemoryMeetingDraftStore() }
     // ---- Local files -------------------------------------------------------
 
     private val fileFriendSearchDrafts by lazy {
